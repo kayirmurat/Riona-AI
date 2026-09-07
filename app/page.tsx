@@ -1,18 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ChatMessage } from "../lib/ai/types";
 
+function getOrCreateConversationId(): string {
+  const key = "riona_conversation_id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
 export default function Home() {
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+
+  useEffect(() => {
+    const id = getOrCreateConversationId();
+    setConversationId(id);
+
+    fetch(`/api/history?conversationId=${id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.history) setMessages(data.history);
+      })
+      .finally(() => setHistoryLoaded(true));
+  }, []);
 
   async function sendMessage() {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !conversationId) return;
     const userMsg: ChatMessage = { role: "user", content: input };
-    const newHistory = [...messages, userMsg];
-    setMessages(newHistory);
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
 
@@ -20,13 +43,13 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg.content, history: messages }),
+        body: JSON.stringify({ message: userMsg.content, conversationId }),
       });
       const data = await res.json();
       const replyText = res.ok ? data.reply : `Hata: ${data.error}`;
-      setMessages([...newHistory, { role: "assistant", content: replyText }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: replyText }]);
     } catch (e) {
-      setMessages([...newHistory, { role: "assistant", content: "Bağlantı hatası oluştu." }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: "Bağlantı hatası oluştu." }]);
     } finally {
       setLoading(false);
     }
@@ -47,7 +70,8 @@ export default function Home() {
           gap: 8,
         }}
       >
-        {messages.length === 0 && (
+        {!historyLoaded && <p style={{ color: "#888" }}>Geçmiş yükleniyor...</p>}
+        {historyLoaded && messages.length === 0 && (
           <p style={{ color: "#888" }}>Bir mesaj yazarak Riona AI ile konuşmaya başla.</p>
         )}
         {messages.map((m, i) => (
