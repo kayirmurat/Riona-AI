@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { AIProvider, ChatMessage, ToolDefinition } from "../types";
+import type { AIProvider, ChatMessage, ToolDefinition, ToolChoice } from "../types";
 
 export class OpenAIAdapter implements AIProvider {
   name = "openai";
@@ -11,7 +11,7 @@ export class OpenAIAdapter implements AIProvider {
     this.model = model;
   }
 
-  async chat(messages: ChatMessage[], tools?: ToolDefinition[]): Promise<ChatMessage> {
+  async chat(messages: ChatMessage[], tools?: ToolDefinition[], toolChoice?: ToolChoice): Promise<ChatMessage> {
     const openaiMessages = messages.map((m) => {
       if (m.role === "tool") {
         return { role: "tool" as const, content: m.content, tool_call_id: m.tool_call_id! };
@@ -35,11 +35,17 @@ export class OpenAIAdapter implements AIProvider {
       function: { name: t.name, description: t.description, parameters: t.parameters },
     }));
 
+    const openaiToolChoice =
+      toolChoice && typeof toolChoice === "object"
+        ? { type: "function" as const, function: { name: toolChoice.name } }
+        : toolChoice;
+
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages: openaiMessages as any,
       tools: openaiTools,
-    });
+      tool_choice: openaiTools ? (openaiToolChoice ?? "auto") : undefined,
+    } as any);
 
     const choice = response.choices[0].message;
 
