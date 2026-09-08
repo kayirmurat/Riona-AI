@@ -1,22 +1,4 @@
-import { getGoogleTokens, saveGoogleTokens } from "./tokens";
-import { refreshAccessToken } from "./oauth";
-
-async function getValidAccessToken(): Promise<string | null> {
-  const tokens = await getGoogleTokens();
-  if (!tokens) return null;
-
-  if (Date.now() < tokens.expiry_date - 60_000) {
-    return tokens.access_token;
-  }
-
-  const refreshed = await refreshAccessToken(tokens.refresh_token);
-  await saveGoogleTokens({
-    access_token: refreshed.access_token,
-    refresh_token: tokens.refresh_token,
-    expiry_date: refreshed.expiry_date,
-  });
-  return refreshed.access_token;
-}
+import { getValidAccessToken } from "./tokens";
 
 export async function fetchRecentEmails(maxResults = 5): Promise<string> {
   const accessToken = await getValidAccessToken();
