@@ -19,7 +19,9 @@ export interface ToolDefinition {
   parameters: Record<string, any>;
 }
 
+export type ToolChoice = "auto" | { type: "function"; name: string };
+
 export interface AIProvider {
   name: string;
-  chat(messages: ChatMessage[], tools?: ToolDefinition[]): Promise<ChatMessage>;
+  chat(messages: ChatMessage[], tools?: ToolDefinition[], toolChoice?: ToolChoice): Promise<ChatMessage>;
 }
