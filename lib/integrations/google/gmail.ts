@@ -42,6 +42,11 @@ export async function fetchRecentEmails(maxResults = 5, accountIdentifier?: stri
   return parts.join("\n\n");
 }
 
+function encodeSubject(subject: string): string {
+  const base64Subject = Buffer.from(subject, "utf-8").toString("base64");
+  return `=?UTF-8?B?${base64Subject}?=`;
+}
+
 export async function createEmailDraft(
   accountIdentifier: string,
   to: string,
@@ -51,9 +56,14 @@ export async function createEmailDraft(
   const accessToken = await getValidAccessTokenFor(accountIdentifier);
   if (!accessToken) return "Bu hesap bağlı değil.";
 
-  const rawMessage = [`To: ${to}`, `Subject: ${subject}`, "Content-Type: text/plain; charset=utf-8", "", body].join(
-    "\n"
-  );
+  const rawMessage = [
+    `To: ${to}`,
+    `Subject: ${encodeSubject(subject)}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    Buffer.from(body, "utf-8").toString("base64"),
+  ].join("\n");
 
   const encodedMessage = Buffer.from(rawMessage)
     .toString("base64")
