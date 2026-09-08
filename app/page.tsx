@@ -3,11 +3,17 @@
 import { useEffect, useState } from "react";
 import type { ChatMessage } from "../lib/ai/types";
 
-interface PendingAction {
+interface ScannedEmail {
   id: string;
-  tool_name: string;
-  description: string;
-  arguments: Record<string, any>;
+  account_label: string;
+  from_address: string;
+  subject: string;
+  snippet: string;
+  needs_reply: boolean;
+  draft_subject: string | null;
+  draft_body: string | null;
+  pending_action_id: string | null;
+  status: string;
 }
 
 function getOrCreateConversationId(): string {
@@ -26,13 +32,22 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
+  const [scannedEmails, setScannedEmails] = useState<ScannedEmail[]>([]);
+  const [edits, setEdits] = useState<Record<string, { subject: string; body: string }>>({});
 
-  async function loadPendingActions() {
+  async function loadScannedEmails() {
     try {
-      const res = await fetch("/api/pending-actions");
+      const res = await fetch("/api/scanned-emails");
       const data = await res.json();
-      setPendingActions(data.actions ?? []);
+      const emails: ScannedEmail[] = data.emails ?? [];
+      setScannedEmails(emails);
+      const initialEdits: Record<string, { subject: string; body: string }> = {};
+      emails.forEach((e) => {
+        if (e.needs_reply && e.status === "pending") {
+          initialEdits[e.id] = { subject: e.draft_subject ?? "", body: e.draft_body ?? "" };
+        }
+      });
+      setEdits((prev) => ({ ...initialEdits, ...prev }));
     } catch (e) {
       // sessiz geç
     }
@@ -49,16 +64,24 @@ export default function Home() {
       })
       .finally(() => setHistoryLoaded(true));
 
-    loadPendingActions();
+    loadScannedEmails();
   }, []);
 
-  async function respondToPending(id: string, action: "approve" | "reject") {
+  async function respondToPending(pendingActionId: string, action: "approve" | "reject", emailId: string) {
+    const editedValues = edits[emailId];
     await fetch("/api/pending-actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, action }),
+      body: JSON.stringify({
+        id: pendingActionId,
+        action,
+        overrides:
+          action === "approve" && editedValues
+            ? { subject: editedValues.subject, body: editedValues.body }
+            : undefined,
+      }),
     });
-    loadPendingActions();
+    loadScannedEmails();
   }
 
   async function sendMessage() {
@@ -84,49 +107,73 @@ export default function Home() {
     }
   }
 
+  const activeEmails = scannedEmails.filter((e) => e.status !== "executed" && e.status !== "rejected");
+
   return (
     <main style={{ maxWidth: 640, margin: "0 auto", padding: 16, fontFamily: "sans-serif" }}>
       <h1 style={{ fontSize: 22, marginBottom: 12 }}>Riona AI</h1>
 
-      {pendingActions.length > 0 && (
+      {activeEmails.length > 0 && (
         <div
           style={{
-            border: "1px solid #f0b429",
-            background: "#fffbea",
+            border: "1px solid #ccc",
+            background: "#f9fafb",
             borderRadius: 8,
             padding: 12,
             marginBottom: 16,
           }}
         >
-          <h2 style={{ fontSize: 16, marginBottom: 8 }}>Bekleyen Onaylar ({pendingActions.length})</h2>
-          {pendingActions.map((pa) => (
+          <h2 style={{ fontSize: 16, marginBottom: 8 }}>Taranan Mailler ({activeEmails.length})</h2>
+          {activeEmails.map((e) => (
             <div
-              key={pa.id}
-              style={{ borderTop: "1px solid #f0b429", paddingTop: 8, marginTop: 8, fontSize: 14 }}
+              key={e.id}
+              style={{
+                borderTop: "1px solid #ddd",
+                paddingTop: 10,
+                marginTop: 10,
+                fontSize: 14,
+              }}
             >
-              {pa.tool_name === "create_email_draft" ? (
-                <div style={{ marginBottom: 8 }}>
-                  <p style={{ fontWeight: 600, marginBottom: 4 }}>{pa.arguments.subject}</p>
-                  <p style={{ color: "#666", fontSize: 13, marginBottom: 6 }}>Kime: {pa.arguments.to}</p>
-                  <p style={{ whiteSpace: "pre-wrap", background: "white", padding: 8, borderRadius: 6 }}>
-                    {pa.arguments.body}
-                  </p>
+              <p style={{ fontWeight: 600 }}>{e.subject || "(konu yok)"}</p>
+              <p style={{ color: "#666", fontSize: 12, marginBottom: 6 }}>
+                Kimden: {e.from_address} · Hesap: {e.account_label}
+              </p>
+              <p style={{ color: "#444", marginBottom: 8 }}>{e.snippet}</p>
+
+              {e.needs_reply ? (
+                <div style={{ background: "#fffbea", border: "1px solid #f0b429", borderRadius: 6, padding: 8 }}>
+                  <p style={{ fontSize: 12, color: "#92400e", marginBottom: 4 }}>Önerilen cevap (düzenleyebilirsin):</p>
+                  <input
+                    value={edits[e.id]?.subject ?? ""}
+                    onChange={(ev) =>
+                      setEdits((prev) => ({ ...prev, [e.id]: { ...prev[e.id], subject: ev.target.value } }))
+                    }
+                    style={{ width: "100%", padding: 6, marginBottom: 6, borderRadius: 4, border: "1px solid #ccc" }}
+                  />
+                  <textarea
+                    value={edits[e.id]?.body ?? ""}
+                    onChange={(ev) =>
+                      setEdits((prev) => ({ ...prev, [e.id]: { ...prev[e.id], body: ev.target.value } }))
+                    }
+                    rows={4}
+                    style={{ width: "100%", padding: 6, marginBottom: 6, borderRadius: 4, border: "1px solid #ccc" }}
+                  />
+                  <button
+                    onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "approve", e.id)}
+                    style={{ marginRight: 8, padding: "6px 12px", borderRadius: 6, border: "none", background: "#0b6", color: "white" }}
+                  >
+                    Onayla
+                  </button>
+                  <button
+                    onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "reject", e.id)}
+                    style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #999", background: "white" }}
+                  >
+                    Reddet
+                  </button>
                 </div>
               ) : (
-                <p style={{ marginBottom: 8 }}>{pa.description}</p>
+                <p style={{ fontSize: 12, color: "#888" }}>Yanıt gerektirmiyor.</p>
               )}
-              <button
-                onClick={() => respondToPending(pa.id, "approve")}
-                style={{ marginRight: 8, padding: "6px 12px", borderRadius: 6, border: "none", background: "#0b6", color: "white" }}
-              >
-                Onayla
-              </button>
-              <button
-                onClick={() => respondToPending(pa.id, "reject")}
-                style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #999", background: "white" }}
-              >
-                Reddet
-              </button>
             </div>
           ))}
         </div>
