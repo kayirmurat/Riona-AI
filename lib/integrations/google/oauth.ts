@@ -1,14 +1,16 @@
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 
-export function getGoogleAuthUrl(): string {
+export function getGoogleAuthUrl(label: string): string {
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID ?? "",
     redirect_uri: process.env.GOOGLE_REDIRECT_URI ?? "",
     response_type: "code",
-    scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly",
+    scope:
+      "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.compose",
     access_type: "offline",
     prompt: "consent",
+    state: label,
   });
   return `${GOOGLE_AUTH_URL}?${params.toString()}`;
 }
