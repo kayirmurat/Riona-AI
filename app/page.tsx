@@ -104,7 +104,17 @@ export default function Home() {
               key={pa.id}
               style={{ borderTop: "1px solid #f0b429", paddingTop: 8, marginTop: 8, fontSize: 14 }}
             >
-              <p style={{ marginBottom: 8 }}>{pa.description}</p>
+              {pa.tool_name === "create_email_draft" ? (
+                <div style={{ marginBottom: 8 }}>
+                  <p style={{ fontWeight: 600, marginBottom: 4 }}>{pa.arguments.subject}</p>
+                  <p style={{ color: "#666", fontSize: 13, marginBottom: 6 }}>Kime: {pa.arguments.to}</p>
+                  <p style={{ whiteSpace: "pre-wrap", background: "white", padding: 8, borderRadius: 6 }}>
+                    {pa.arguments.body}
+                  </p>
+                </div>
+              ) : (
+                <p style={{ marginBottom: 8 }}>{pa.description}</p>
+              )}
               <button
                 onClick={() => respondToPending(pa.id, "approve")}
                 style={{ marginRight: 8, padding: "6px 12px", borderRadius: 6, border: "none", background: "#0b6", color: "white" }}
