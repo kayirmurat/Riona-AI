@@ -18,8 +18,11 @@ export async function GET(req: Request) {
     const accessToken = await getValidAccessTokenFor(acc.email);
     if (!accessToken) continue;
 
+    const query = encodeURIComponent(
+      "is:unread -category:promotions -category:social -category:updates -category:forums"
+    );
     const listRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=5&q=is:unread`,
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&q=${query}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
     const listData = await listRes.json();
@@ -60,7 +63,7 @@ export async function GET(req: Request) {
         "system-automation",
         "create_email_draft",
         { to: replyTo, subject: `Re: ${subject}`, body: draftBody, account: acc.label },
-        `Otomatik taslak: "${subject}" konulu maile öneri cevap (${acc.label})`
+        `"${subject}" konulu maile öneri cevap (${acc.label})`
       );
       createdCount++;
     }
