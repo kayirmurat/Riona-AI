@@ -1,10 +1,8 @@
-import { getValidAccessToken } from "./tokens";
+import { getValidAccessTokenFor, listGoogleAccounts } from "./tokens";
 
-export async function fetchRecentEmails(maxResults = 5): Promise<string> {
-  const accessToken = await getValidAccessToken();
-  if (!accessToken) {
-    return "Gmail hesabı henüz bağlı değil.";
-  }
+async function fetchEmailsForAccount(identifier: string, maxResults: number): Promise<string> {
+  const accessToken = await getValidAccessTokenFor(identifier);
+  if (!accessToken) return "Bu hesap bağlı değil.";
 
   const listRes = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}`,
@@ -28,4 +26,47 @@ export async function fetchRecentEmails(maxResults = 5): Promise<string> {
   }
 
   return summaries.length > 0 ? summaries.join("\n\n") : "Gelen kutusunda mesaj bulunamadı.";
+}
+
+export async function fetchRecentEmails(maxResults = 5, accountIdentifier?: string): Promise<string> {
+  if (accountIdentifier) {
+    return fetchEmailsForAccount(accountIdentifier, maxResults);
+  }
+  const accounts = await listGoogleAccounts();
+  if (accounts.length === 0) return "Hiçbir Gmail hesabı bağlı değil.";
+  const parts: string[] = [];
+  for (const acc of accounts) {
+    const text = await fetchEmailsForAccount(acc.email, maxResults);
+    parts.push(`--- ${acc.label} (${acc.email}) ---\n${text}`);
+  }
+  return parts.join("\n\n");
+}
+
+export async function createEmailDraft(
+  accountIdentifier: string,
+  to: string,
+  subject: string,
+  body: string
+): Promise<string> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return "Bu hesap bağlı değil.";
+
+  const rawMessage = [`To: ${to}`, `Subject: ${subject}`, "Content-Type: text/plain; charset=utf-8", "", body].join(
+    "\n"
+  );
+
+  const encodedMessage = Buffer.from(rawMessage)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: { raw: encodedMessage } }),
+  });
+
+  if (!res.ok) return "Taslak oluşturulamadı.";
+  return "Taslak başarıyla Gmail'de oluşturuldu (Taslaklar klasörüne bak).";
 }
