@@ -19,12 +19,28 @@ export async function listGoogleAccounts(): Promise<{ email: string; label: stri
   return data;
 }
 
-async function getAccountByIdentifier(identifier: string): Promise<GoogleAccountTokens | null> {
-  const byEmail = await supabase.from("google_accounts").select("*").eq("email", identifier).maybeSingle();
-  if (byEmail.data) return byEmail.data as GoogleAccountTokens;
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/ş/g, "s")
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .trim();
+}
 
-  const byLabel = await supabase.from("google_accounts").select("*").eq("label", identifier).maybeSingle();
-  return (byLabel.data as GoogleAccountTokens) ?? null;
+async function getAccountByIdentifier(identifier: string): Promise<GoogleAccountTokens | null> {
+  const { data, error } = await supabase.from("google_accounts").select("*");
+  if (error || !data) return null;
+
+  const exactEmail = data.find((a: any) => a.email === identifier);
+  if (exactEmail) return exactEmail as GoogleAccountTokens;
+
+  const normalizedId = normalize(identifier);
+  const byLabel = data.find((a: any) => normalize(a.label) === normalizedId);
+  return (byLabel as GoogleAccountTokens) ?? null;
 }
 
 export async function getValidAccessTokenFor(identifier: string): Promise<string | null> {
