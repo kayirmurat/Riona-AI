@@ -1,43 +1,46 @@
 import { supabase } from "../../db/supabase";
 import { refreshAccessToken } from "./oauth";
 
-interface GoogleTokens {
+interface GoogleAccountTokens {
+  email: string;
+  label: string;
   access_token: string;
   refresh_token: string;
   expiry_date: number;
 }
 
-export async function saveGoogleTokens(tokens: GoogleTokens): Promise<void> {
-  await supabase.from("gmail_tokens").upsert({
-    id: 1,
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
-    expiry_date: tokens.expiry_date,
-  });
+export async function saveGoogleAccount(account: GoogleAccountTokens): Promise<void> {
+  await supabase.from("google_accounts").upsert(account);
 }
 
-export async function getGoogleTokens(): Promise<GoogleTokens | null> {
-  const { data, error } = await supabase.from("gmail_tokens").select("*").eq("id", 1).single();
-  if (error || !data) return null;
-  return {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expiry_date: data.expiry_date,
-  };
+export async function listGoogleAccounts(): Promise<{ email: string; label: string }[]> {
+  const { data, error } = await supabase.from("google_accounts").select("email, label");
+  if (error || !data) return [];
+  return data;
 }
 
-export async function getValidAccessToken(): Promise<string | null> {
-  const tokens = await getGoogleTokens();
-  if (!tokens) return null;
+async function getAccountByIdentifier(identifier: string): Promise<GoogleAccountTokens | null> {
+  const byEmail = await supabase.from("google_accounts").select("*").eq("email", identifier).maybeSingle();
+  if (byEmail.data) return byEmail.data as GoogleAccountTokens;
 
-  if (Date.now() < tokens.expiry_date - 60_000) {
-    return tokens.access_token;
+  const byLabel = await supabase.from("google_accounts").select("*").eq("label", identifier).maybeSingle();
+  return (byLabel.data as GoogleAccountTokens) ?? null;
+}
+
+export async function getValidAccessTokenFor(identifier: string): Promise<string | null> {
+  const account = await getAccountByIdentifier(identifier);
+  if (!account) return null;
+
+  if (Date.now() < account.expiry_date - 60_000) {
+    return account.access_token;
   }
 
-  const refreshed = await refreshAccessToken(tokens.refresh_token);
-  await saveGoogleTokens({
+  const refreshed = await refreshAccessToken(account.refresh_token);
+  await saveGoogleAccount({
+    email: account.email,
+    label: account.label,
     access_token: refreshed.access_token,
-    refresh_token: tokens.refresh_token,
+    refresh_token: account.refresh_token,
     expiry_date: refreshed.expiry_date,
   });
   return refreshed.access_token;
