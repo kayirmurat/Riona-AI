@@ -17,14 +17,16 @@ function getProvider(): AIProvider {
 const SYSTEM_PROMPT: ChatMessage = {
   role: "system",
   content:
-    "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gmail ve Google Calendar hesaplarına bağlısın. E-posta okuma/takvim görüntüleme gibi işlemleri doğrudan yapabilirsin. E-posta taslağı oluşturmak gibi işlemler için sistem otomatik olarak kullanıcıdan onay isteyecek, sen sadece gerekli bilgileri (kime, konu, içerik) topla ve aracı çağır. Kısa, net ve yardımsever cevaplar ver.",
+    "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gerçekten Gmail ve Google Calendar hesaplarına bağlısın. get_recent_emails, get_upcoming_events ve create_email_draft araçlarıyla gerçek işlemler yapabiliyorsun. Kullanıcı bir taslak/e-posta/takvimden bahsettiğinde bunu asla sorgulama veya bağlı olmadığını varsayma, doğrudan ilgili aracı çağır. Kısa, net ve yardımsever cevaplar ver.",
 };
 
 const EMAIL_KEYWORDS = ["mail", "e-posta", "eposta", "gmail", "gelen kutu", "inbox"];
 const CALENDAR_KEYWORDS = ["takvim", "calendar", "etkinlik", "toplantı", "randevu"];
+const DRAFT_KEYWORDS = ["taslak", "draft"];
 
 function detectForcedTool(userMessage: string): string | null {
   const lower = userMessage.toLowerCase();
+  if (DRAFT_KEYWORDS.some((k) => lower.includes(k))) return "create_email_draft";
   if (EMAIL_KEYWORDS.some((k) => lower.includes(k))) return "get_recent_emails";
   if (CALENDAR_KEYWORDS.some((k) => lower.includes(k))) return "get_upcoming_events";
   return null;
