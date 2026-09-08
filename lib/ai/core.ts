@@ -16,14 +16,17 @@ function getProvider(): AIProvider {
 const SYSTEM_PROMPT: ChatMessage = {
   role: "system",
   content:
-    "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gerçekten Gmail hesabına bağlısın ve get_recent_emails aracıyla gerçek e-postalara erişebiliyorsun. Kullanıcı e-postalarından bahsettiğinde bunu varsayım olarak sorgulama, doğrudan aracı kullan. Kısa, net ve yardımsever cevaplar ver.",
+    "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gerçekten Gmail ve Google Calendar hesaplarına bağlısın ve get_recent_emails / get_upcoming_events araçlarıyla gerçek verilere erişebiliyorsun. Kullanıcı e-posta veya takviminden bahsettiğinde bunu varsayım olarak sorgulama, doğrudan ilgili aracı kullan. Kısa, net ve yardımsever cevaplar ver.",
 };
 
 const EMAIL_KEYWORDS = ["mail", "e-posta", "eposta", "gmail", "gelen kutu", "inbox"];
+const CALENDAR_KEYWORDS = ["takvim", "calendar", "etkinlik", "toplantı", "randevu"];
 
-function shouldForceGmailTool(userMessage: string): boolean {
+function detectForcedTool(userMessage: string): string | null {
   const lower = userMessage.toLowerCase();
-  return EMAIL_KEYWORDS.some((k) => lower.includes(k));
+  if (EMAIL_KEYWORDS.some((k) => lower.includes(k))) return "get_recent_emails";
+  if (CALENDAR_KEYWORDS.some((k) => lower.includes(k))) return "get_upcoming_events";
+  return null;
 }
 
 export async function askRiona(conversationId: string, userMessage: string): Promise<string> {
@@ -32,9 +35,8 @@ export async function askRiona(conversationId: string, userMessage: string): Pro
   const messages: ChatMessage[] = [SYSTEM_PROMPT, ...history, { role: "user", content: userMessage }];
 
   const toolDefs = availableTools.map((t) => t.definition);
-  const toolChoice: ToolChoice = shouldForceGmailTool(userMessage)
-    ? { type: "function", name: "get_recent_emails" }
-    : "auto";
+  const forced = detectForcedTool(userMessage);
+  const toolChoice: ToolChoice = forced ? { type: "function", name: forced } : "auto";
 
   const firstResponse = await provider.chat(messages, toolDefs, toolChoice);
 
