@@ -15,20 +15,23 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { id, action } = await req.json();
+  const { id, action, overrides } = await req.json();
 
   const { data: pending } = await supabase.from("pending_actions").select("*").eq("id", id).single();
   if (!pending) return NextResponse.json({ error: "Kayıt bulunamadı." }, { status: 404 });
 
   if (action === "approve") {
+    const finalArgs = overrides ? { ...pending.arguments, ...overrides } : pending.arguments;
     const tool = getToolByName(pending.tool_name);
-    const result = tool ? await tool.execute(pending.arguments) : "Araç bulunamadı.";
+    const result = tool ? await tool.execute(finalArgs) : "Araç bulunamadı.";
     await updatePendingActionStatus(id, "executed");
+    await supabase.from("scanned_emails").update({ status: "executed" }).eq("pending_action_id", id);
     return NextResponse.json({ success: true, result });
   }
 
   if (action === "reject") {
     await updatePendingActionStatus(id, "rejected");
+    await supabase.from("scanned_emails").update({ status: "rejected" }).eq("pending_action_id", id);
     return NextResponse.json({ success: true });
   }
 
