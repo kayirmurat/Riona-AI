@@ -3,7 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
 
-  if (pathname.startsWith("/login") || pathname.startsWith("/api/auth/login")) {
+  if (
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/api/auth/login") ||
+    pathname.startsWith("/api/cron")
+  ) {
     return NextResponse.next();
   }
 
