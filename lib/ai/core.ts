@@ -1,4 +1,4 @@
-import type { AIProvider, ChatMessage } from "./types";
+import type { AIProvider, ChatMessage, ToolChoice } from "./types";
 import { OpenAIAdapter } from "./adapters/openai";
 import { getHistory, saveTurn } from "./memory";
 import { availableTools, getToolByName } from "./toolRegistry";
@@ -16,8 +16,15 @@ function getProvider(): AIProvider {
 const SYSTEM_PROMPT: ChatMessage = {
   role: "system",
   content:
-    "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Kısa, net ve yardımsever cevaplar ver. Gerekirse elindeki araçları kullan.",
+    "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gerçekten Gmail hesabına bağlısın ve get_recent_emails aracıyla gerçek e-postalara erişebiliyorsun. Kullanıcı e-postalarından bahsettiğinde bunu varsayım olarak sorgulama, doğrudan aracı kullan. Kısa, net ve yardımsever cevaplar ver.",
 };
+
+const EMAIL_KEYWORDS = ["mail", "e-posta", "eposta", "gmail", "gelen kutu", "inbox"];
+
+function shouldForceGmailTool(userMessage: string): boolean {
+  const lower = userMessage.toLowerCase();
+  return EMAIL_KEYWORDS.some((k) => lower.includes(k));
+}
 
 export async function askRiona(conversationId: string, userMessage: string): Promise<string> {
   const provider = getProvider();
@@ -25,7 +32,11 @@ export async function askRiona(conversationId: string, userMessage: string): Pro
   const messages: ChatMessage[] = [SYSTEM_PROMPT, ...history, { role: "user", content: userMessage }];
 
   const toolDefs = availableTools.map((t) => t.definition);
-  const firstResponse = await provider.chat(messages, toolDefs);
+  const toolChoice: ToolChoice = shouldForceGmailTool(userMessage)
+    ? { type: "function", name: "get_recent_emails" }
+    : "auto";
+
+  const firstResponse = await provider.chat(messages, toolDefs, toolChoice);
 
   let finalText: string;
 
