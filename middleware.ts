@@ -1,26 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export function middleware(req: NextRequest) {
-  const expectedUser = "riona";
-  const expectedPass = process.env.APP_PASSWORD ?? "";
+export async function middleware(req: NextRequest) {
+  const pathname = req.nextUrl.pathname;
 
-  const auth = req.headers.get("authorization");
+  if (pathname.startsWith("/login") || pathname.startsWith("/api/auth/login")) {
+    return NextResponse.next();
+  }
 
-  if (auth && expectedPass) {
-    const [scheme, encoded] = auth.split(" ");
-    if (scheme === "Basic" && encoded) {
-      const decoded = Buffer.from(encoded, "base64").toString("utf-8");
-      const [user, pass] = decoded.split(":");
-      if (user === expectedUser && pass === expectedPass) {
-        return NextResponse.next();
-      }
+  const token = req.cookies.get("sb-access-token")?.value;
+
+  if (token) {
+    const res = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: process.env.SUPABASE_ANON_KEY ?? "",
+      },
+    });
+    if (res.ok) {
+      return NextResponse.next();
     }
   }
 
-  return new NextResponse("Yetkisiz erişim", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Riona AI"' },
-  });
+  return NextResponse.redirect(new URL("/login", req.url));
 }
 
 export const config = {
