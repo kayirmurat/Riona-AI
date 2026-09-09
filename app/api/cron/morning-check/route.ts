@@ -43,9 +43,17 @@ export async function GET(req: Request) {
       }
 
       const messages = listData.messages ?? [];
-      debug.push({ account: acc.label, foundMessages: messages.length });
 
-      for (const m of messages) {
+      const { data: alreadyScanned } = await supabase
+        .from("scanned_emails")
+        .select("gmail_message_id")
+        .eq("account_label", acc.label);
+      const scannedIds = new Set((alreadyScanned ?? []).map((r: any) => r.gmail_message_id));
+
+      const newMessages = messages.filter((m: any) => !scannedIds.has(m.id));
+      debug.push({ account: acc.label, foundMessages: messages.length, newMessages: newMessages.length });
+
+      for (const m of newMessages) {
         const msgRes = await fetch(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -56,7 +64,18 @@ export async function GET(req: Request) {
         const subject = headers.find((h: any) => h.name === "Subject")?.value ?? "";
         const snippet = msgData.snippet ?? "";
 
-        if (/no-?reply|notification|noreply/i.test(from)) continue;
+        if (/no-?reply|notification|noreply/i.test(from)) {
+          await supabase.from("scanned_emails").insert({
+            gmail_message_id: m.id,
+            account_label: acc.label,
+            from_address: from,
+            subject,
+            snippet,
+            needs_reply: false,
+            status: "info",
+          });
+          continue;
+        }
 
         const classification = await openai.chat.completions.create({
           model: "gpt-4o-mini",
@@ -64,7 +83,7 @@ export async function GET(req: Request) {
             {
               role: "system",
               content:
-                'Gelen bir e-postayı değerlendir. Kullanıcının kişisel bir cevap yazması gerekiyorsa ilk satıra sadece "EVET" yaz, ardından kısa ve profesyonel bir cevap taslağı yaz. Cevap gerekmiyorsa (bilgilendirme, fatura, bülten, otomatik bildirim vb.) ilk satıra sadece "HAYIR" yaz ve başka hiçbir şey yazma.',
+                'Gelen bir e-postayı değerlendir. Kullanıcının kişisel bir cevap yazması gerekiyorsa ilk satıra sadece "EVET" yaz, ardından kısa ve profesyonel bir cevap taslağı yaz. Cevap gerekmiyorsa (bilgilendirme, fatura, bülten, otomatik bildirim, promosyon vb.) ilk satıra sadece "HAYIR" yaz ve başka hiçbir şey yazma.',
             },
             { role: "user", content: `Kimden: ${from}\nKonu: ${subject}\nÖzet: ${snippet}` },
           ],
@@ -92,7 +111,8 @@ export async function GET(req: Request) {
           );
         }
 
-        const { error: insertError } = await supabase.from("scanned_emails").insert({
+        await supabase.from("scanned_emails").insert({
+          gmail_message_id: m.id,
           account_label: acc.label,
           from_address: from,
           subject,
@@ -103,8 +123,6 @@ export async function GET(req: Request) {
           pending_action_id: pendingActionId,
           status: needsReply ? "pending" : "info",
         });
-
-        if (insertError) debug.push({ insertError });
 
         scannedCount++;
       }
