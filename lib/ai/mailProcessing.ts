@@ -2,8 +2,11 @@ import { supabase } from "../db/supabase";
 import { getProvider } from "./provider";
 import { createPendingAction } from "./approval";
 import { createCalendarNote } from "../integrations/google/calendar";
+import { sendPushToAll } from "../push/sendPush";
 
 const NO_REPLY_PATTERN = /no-?reply|notification|noreply/i;
+const AUTO_NOTIFICATION_CATEGORY = "Otomatik Bildirim";
+const MAX_EXISTING_CATEGORIES = 30;
 
 interface Classification {
   needs_reply: boolean;
@@ -14,6 +17,7 @@ interface Classification {
   meeting_start: string | null;
   meeting_end: string | null;
   meeting_location: string | null;
+  category: string | null;
 }
 
 const CLASSIFICATION_FALLBACK: Classification = {
@@ -25,10 +29,31 @@ const CLASSIFICATION_FALLBACK: Classification = {
   meeting_start: null,
   meeting_end: null,
   meeting_location: null,
+  category: null,
 };
+
+// Kategori isimlerinin çoğalmasını önlemek için (örn. "Fatura" ve
+// "Faturalandırma" ayrı ayrı üretilmesin) modele daha önce üretilmiş
+// kategorilerin bir listesi context olarak veriliyor.
+async function getExistingCategories(): Promise<string[]> {
+  const { data } = await supabase
+    .from("scanned_emails")
+    .select("category")
+    .not("category", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (!data) return [];
+  const unique = Array.from(new Set(data.map((row: any) => row.category as string)));
+  return unique.slice(0, MAX_EXISTING_CATEGORIES);
+}
 
 export async function classifyEmail(from: string, subject: string, snippet: string): Promise<Classification> {
   const currentYear = new Date().getFullYear();
+  const existingCategories = await getExistingCategories();
+  const categoriesHint =
+    existingCategories.length > 0
+      ? `Kullanıcının daha önce kullanılan kategori isimleri: ${JSON.stringify(existingCategories)}. Anlamca uyan bir kategori bu listede VARSA onu birebir aynı şekilde kullan, yoksa kısa ve anlamlı yeni bir tane üret.`
+      : "Henüz kategori geçmişi yok, kısa ve anlamlı yeni bir kategori üret.";
 
   try {
     const provider = getProvider();
@@ -37,14 +62,15 @@ export async function classifyEmail(from: string, subject: string, snippet: stri
         {
           role: "system",
           content: `Bir e-postayı değerlendir ve SADECE şu JSON formatında yanıt ver, başka hiçbir şey yazma:
-{"needs_reply": boolean, "draft_subject": string|null, "draft_body": string|null, "is_meeting": boolean, "meeting_title": string|null, "meeting_start": string|null, "meeting_end": string|null, "meeting_location": string|null}
+{"needs_reply": boolean, "draft_subject": string|null, "draft_body": string|null, "is_meeting": boolean, "meeting_title": string|null, "meeting_start": string|null, "meeting_end": string|null, "meeting_location": string|null, "category": string}
 
 Kurallar:
 - needs_reply: kullanıcının kişisel olarak cevap yazması gerekiyorsa true; bilgilendirme, fatura, bülten, otomatik bildirim veya promosyonsa false.
 - needs_reply true ise draft_subject ve draft_body kısa ve profesyonel bir taslakla doldurulsun, değilse ikisi de null olsun.
 - is_meeting: e-posta bir toplantı/randevu daveti içeriyorsa veya belirli bir toplantı zamanından bahsediyorsa true.
 - is_meeting true ise meeting_title, meeting_start ve meeting_end ISO 8601 formatında (yıl belirtilmemişse ${currentYear} varsay, saat dilimi olarak Türkiye/İstanbul yerel saatini varsay), meeting_location (yoksa null) doldurulsun. Bitiş saati belirtilmemişse başlangıçtan 1 saat sonrası olsun.
-- Zamanı makul şekilde tahmin edemiyorsan is_meeting false yap.`,
+- Zamanı makul şekilde tahmin edemiyorsan is_meeting false yap.
+- category: e-postanın konusuna en uygun KISA (1-3 kelime) bir kategori adı (örn. "Faturalandırma", "Franchise Operasyonları", "Randevu/Toplantı", "Kişisel"). Sabit bir liste yok, içeriğe göre sen üret. ${categoriesHint}`,
         },
         { role: "user", content: `Kimden: ${from}\nKonu: ${subject}\nÖzet: ${snippet}` },
       ],
@@ -63,6 +89,7 @@ Kurallar:
       meeting_start: parsed.meeting_start ?? null,
       meeting_end: parsed.meeting_end ?? null,
       meeting_location: parsed.meeting_location ?? null,
+      category: typeof parsed.category === "string" && parsed.category.trim() ? parsed.category.trim() : null,
     };
   } catch (err) {
     console.error("[mailProcessing] classifyEmail hatası, needs_reply=false döndürülüyor:", err);
@@ -127,6 +154,7 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
       snippet,
       needs_reply: false,
       status: "info",
+      category: AUTO_NOTIFICATION_CATEGORY,
     });
     if (error) return "already_scanned";
     return "inserted";
@@ -149,6 +177,14 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
       { to: replyTo, subject: draftSubject, body: draftBody, account: account.label },
       `"${subject}" konulu maile öneri cevap (${account.label})`
     );
+
+    // "Önemli" ayrı bir skor değil, needs_reply ile aynı sinyal — kullanıcının
+    // gerçekten dikkat etmesi gereken mailler zaten cevap gerektirenler.
+    sendPushToAll({
+      title: "Cevap bekleyen yeni mail",
+      body: `"${subject}" — ${from}`,
+      url: "/",
+    }).catch((err) => console.error("[mailProcessing] push bildirimi gönderilemedi:", err));
   }
 
   if (classification.is_meeting && classification.meeting_title && classification.meeting_start && classification.meeting_end) {
@@ -157,7 +193,7 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
       start: classification.meeting_start,
       end: classification.meeting_end,
       location: classification.meeting_location,
-      description: `Kaynak e-posta: "${subject}" (${from})`,
+      description: `Kaynak e-posta: "${subject}" (${from})\nMaili aç: https://mail.google.com/mail/u/0/#all/${messageId}`,
     });
     if (!calendarResult.ok) {
       console.error(`[mailProcessing] takvim notu oluşturulamadı: account=${account.label} message=${messageId}`, calendarResult.message);
@@ -175,6 +211,7 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
     draft_body: draftBody,
     pending_action_id: pendingActionId,
     status: classification.needs_reply ? "pending" : "info",
+    category: classification.category,
   });
   if (error) return "already_scanned";
   console.log(`[mailProcessing] kaydedildi: account=${account.label} message=${messageId} subject="${subject}" needs_reply=${classification.needs_reply}`);

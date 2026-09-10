@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import NotificationToggle from "./NotificationToggle";
 
 interface Conversation {
   id: string;
@@ -178,6 +179,10 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose }: Sidebar
             </div>
           ))}
         </nav>
+
+        <div className="border-t border-border p-3">
+          <NotificationToggle />
+        </div>
       </aside>
     </>
   );

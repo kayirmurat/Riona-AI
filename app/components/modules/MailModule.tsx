@@ -13,11 +13,16 @@ interface ScannedEmail {
   draft_body: string | null;
   pending_action_id: string | null;
   status: string;
+  category: string | null;
 }
+
+type Tab = "pending" | "info";
 
 export default function MailModule() {
   const [scannedEmails, setScannedEmails] = useState<ScannedEmail[]>([]);
   const [edits, setEdits] = useState<Record<string, { subject: string; body: string }>>({});
+  const [tab, setTab] = useState<Tab>("pending");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   async function loadScannedEmails() {
     try {
@@ -63,59 +68,122 @@ export default function MailModule() {
   }
 
   const activeEmails = scannedEmails.filter((e) => e.status !== "executed" && e.status !== "rejected");
-
-  if (activeEmails.length === 0) {
-    return <p className="text-sm text-ink-muted">Taranan yeni mail yok.</p>;
-  }
+  const pendingEmails = activeEmails.filter((e) => e.needs_reply);
+  const infoEmails = activeEmails.filter((e) => !e.needs_reply);
+  const categories = Array.from(new Set(activeEmails.map((e) => e.category).filter((c): c is string => !!c))).sort();
+  const tabEmails = tab === "pending" ? pendingEmails : infoEmails;
+  const visibleEmails = selectedCategory ? tabEmails.filter((e) => e.category === selectedCategory) : tabEmails;
 
   return (
-    <div className="space-y-3">
-      {activeEmails.map((e) => (
-        <div key={e.id} className="rounded-lg border border-border bg-surface p-3 text-sm">
-          <p className="font-medium text-ink">{e.subject || "(konu yok)"}</p>
-          <p className="mb-1 text-xs text-ink-muted">
-            Kimden: {e.from_address} · Hesap: {e.account_label}
-          </p>
-          <p className="mb-2 text-ink-muted">{e.snippet}</p>
+    <div>
+      <div className="mb-3 flex gap-1 rounded-lg bg-surface-sunken p-1 text-xs font-medium">
+        <button
+          onClick={() => setTab("pending")}
+          className={`flex-1 rounded-md px-2 py-1.5 transition ${
+            tab === "pending" ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink"
+          }`}
+        >
+          Onay Bekleyen ({pendingEmails.length})
+        </button>
+        <button
+          onClick={() => setTab("info")}
+          className={`flex-1 rounded-md px-2 py-1.5 transition ${
+            tab === "info" ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink"
+          }`}
+        >
+          Bilgi Amaçlı ({infoEmails.length})
+        </button>
+      </div>
 
-          {e.needs_reply ? (
-            <div className="rounded-md border border-amber-300 bg-amber-50 p-2">
-              <p className="mb-1 text-xs text-amber-800">Önerilen cevap (düzenleyebilirsin):</p>
-              <input
-                value={edits[e.id]?.subject ?? ""}
-                onChange={(ev) =>
-                  setEdits((prev) => ({ ...prev, [e.id]: { ...prev[e.id], subject: ev.target.value } }))
-                }
-                className="mb-1 w-full rounded border border-border px-2 py-1 text-sm"
-              />
-              <textarea
-                value={edits[e.id]?.body ?? ""}
-                onChange={(ev) =>
-                  setEdits((prev) => ({ ...prev, [e.id]: { ...prev[e.id], body: ev.target.value } }))
-                }
-                rows={4}
-                className="mb-2 w-full rounded border border-border px-2 py-1 text-sm"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "approve", e.id)}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-                >
-                  Onayla
-                </button>
-                <button
-                  onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "reject", e.id)}
-                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
-                >
-                  Reddet
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-ink-muted">Yanıt gerektirmiyor.</p>
-          )}
+      {categories.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1">
+          <button
+            onClick={() => setSelectedCategory(null)}
+            className={`rounded-full border px-2 py-0.5 text-xs transition ${
+              selectedCategory === null
+                ? "border-accent bg-accent text-white"
+                : "border-border text-ink-muted hover:bg-surface-sunken"
+            }`}
+          >
+            Tümü
+          </button>
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`rounded-full border px-2 py-0.5 text-xs transition ${
+                selectedCategory === cat
+                  ? "border-accent bg-accent text-white"
+                  : "border-border text-ink-muted hover:bg-surface-sunken"
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
-      ))}
+      )}
+
+      {visibleEmails.length === 0 && (
+        <p className="text-sm text-ink-muted">
+          {tab === "pending" ? "Onay bekleyen mail yok." : "Bilgi amaçlı taranan mail yok."}
+        </p>
+      )}
+
+      <div className="space-y-3">
+        {visibleEmails.map((e) => (
+          <div key={e.id} className="rounded-lg border border-border bg-surface p-3 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-medium text-ink">{e.subject || "(konu yok)"}</p>
+              {e.category && (
+                <span className="shrink-0 rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-muted">
+                  {e.category}
+                </span>
+              )}
+            </div>
+            <p className="mb-1 text-xs text-ink-muted">
+              Kimden: {e.from_address} · Hesap: {e.account_label}
+            </p>
+            <p className="mb-2 text-ink-muted">{e.snippet}</p>
+
+            {e.needs_reply ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-2">
+                <p className="mb-1 text-xs text-amber-800">Önerilen cevap (düzenleyebilirsin):</p>
+                <input
+                  value={edits[e.id]?.subject ?? ""}
+                  onChange={(ev) =>
+                    setEdits((prev) => ({ ...prev, [e.id]: { ...prev[e.id], subject: ev.target.value } }))
+                  }
+                  className="mb-1 w-full rounded border border-border px-2 py-1 text-sm"
+                />
+                <textarea
+                  value={edits[e.id]?.body ?? ""}
+                  onChange={(ev) =>
+                    setEdits((prev) => ({ ...prev, [e.id]: { ...prev[e.id], body: ev.target.value } }))
+                  }
+                  rows={4}
+                  className="mb-2 w-full rounded border border-border px-2 py-1 text-sm"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "approve", e.id)}
+                    className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                  >
+                    Onayla
+                  </button>
+                  <button
+                    onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "reject", e.id)}
+                    className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                  >
+                    Reddet
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-ink-muted">Yanıt gerektirmiyor.</p>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

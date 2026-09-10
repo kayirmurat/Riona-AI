@@ -44,3 +44,31 @@ gösterir.
    `https://riona-ai-tau.vercel.app/api/gmail/watch?secret=<CRON_SECRET-degerin>` adresini aç —
    `{"success":true,...}` dönerse kayıt tamamlanmış demektir. Bu kayıt kendiliğinden günlük olarak
    yenilenir (bkz. `vercel.json`), elle tekrar yapmana gerek yok.
+
+## Web Push Bildirimleri Kurulumu (Stage 14, Stage 5)
+
+Bunun için Google Cloud'a gerek yok — bildirim anahtarları (VAPID) kod tarafında zaten üretildi.
+Sadece Vercel'e şu değerleri girmen gerekiyor (Settings → Environment Variables, Production ve
+Preview ikisi için de işaretli):
+
+- `VAPID_PUBLIC_KEY` = `BJuhoOVH96ly4fFI0lDI34GNk71n7d2lpoqpjXdHI-mO8BjvtqMDH-k-wRd6aDZu2hELl6b4x5V56h_IAzIVQec`
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` = (yukarıdakiyle **birebir aynı** değer — biri sunucu, diğeri
+  tarayıcı tarafında kullanılıyor, bu yüzden iki ayrı isimle giriliyor)
+- `VAPID_PRIVATE_KEY` = `wzi2vhgn_uZpwZ7udkhK9DWtXYq09lk4aiFBoTS4A-Q`
+- `VAPID_SUBJECT` = `mailto:kendi-mailin@example.com` (kendi mailin, Google'ın gerektiğinde
+  ulaşabilmesi için)
+
+Ayrıca Supabase'de bir SQL daha çalıştırman gerekiyor:
+
+```sql
+create table push_subscriptions (
+  endpoint text primary key,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+```
+
+Bunları yapıp yeniden deploy ettikten sonra, uygulamanın sol menüsünde (sidebar altında) çıkan
+**"🔔 Bildirimleri Etkinleştir"** butonuna tıklayıp tarayıcı izni ver — bundan sonra cevap
+gerektiren yeni bir mail geldiğinde tarayıcı bildirimi alacaksın.
