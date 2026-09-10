@@ -14,3 +14,33 @@ Bu klasör, Riona AI'nin ilk çalışan parçası: basit bir sohbet arayüzü + 
 6. O URL'yi açıp bir mesaj yaz — Riona AI cevap veriyorsa Aşama 1 testi başarılı demektir.
 
 Not: `.env.example` dosyasındaki değerler örnektir; gerçek anahtarı asla bir dosyaya veya sohbete yazma, yalnızca Vercel'in kendi Environment Variables ekranına gir.
+
+## Gerçek Zamanlı Mail Ajanı Kurulumu (Stage 14)
+
+Bu adımlar Google Cloud Console'da yapılır, koda dokunmaz. `.env.example`'daki üç yeni
+değişkenin (`GCP_PROJECT_ID`, `PUBSUB_TOPIC_NAME`, `GMAIL_PUSH_WEBHOOK_SECRET`) nereden geldiğini
+gösterir.
+
+1. **GCP projesi**: console.cloud.google.com → üstte proje seçiciden mevcut bir proje yoksa
+   "New Project" ile oluştur. Proje sayfasında görünen **Project ID** → `GCP_PROJECT_ID`.
+2. **API'leri etkinleştir**: sol menüden "APIs & Services → Library" → "Gmail API" ara → **Enable**.
+   Aynı sayfada "Cloud Pub/Sub API" ara → **Enable**.
+3. **Pub/Sub topic oluştur**: "Pub/Sub → Topics → Create Topic". Topic ID'yi kendin seç
+   (örn. `gmail-notifications`) → bu değer `PUBSUB_TOPIC_NAME`.
+4. **Gmail'e yayın izni ver (kritik, atlanırsa bildirimler hiç gelmez)**: oluşturduğun topic'e
+   tıkla → "Permissions" sekmesi → "Add Principal" → principal alanına
+   `gmail-api-push@system.gserviceaccount.com` yaz → Role olarak **Pub/Sub Publisher** seç → Save.
+5. **`GMAIL_PUSH_WEBHOOK_SECRET` değerini kendin seç**: rastgele, uzun bir string (örn. bir şifre
+   yöneticisinden üretilen 32+ karakterlik bir değer). Bunu hem Vercel'e hem bir sonraki adımda
+   Pub/Sub'a gireceksin — ikisi birebir aynı olmalı.
+6. **Push subscription oluştur**: aynı topic sayfasında "Create Subscription" → Delivery type:
+   **Push** → Endpoint URL:
+   `https://riona-ai-tau.vercel.app/api/webhooks/gmail/<GMAIL_PUSH_WEBHOOK_SECRET-degerin>`
+   (kod deploy edildikten sonra bu URL çalışır hale gelir).
+7. **Vercel'e env değişkenlerini gir**: Settings → Environment Variables →
+   `GCP_PROJECT_ID`, `PUBSUB_TOPIC_NAME`, `GMAIL_PUSH_WEBHOOK_SECRET` — **Production ve Preview
+   ikisi için de işaretli** olsun.
+8. **Watch kaydını başlat**: kod deploy edildikten sonra tarayıcıda
+   `https://riona-ai-tau.vercel.app/api/gmail/watch?secret=<CRON_SECRET-degerin>` adresini aç —
+   `{"success":true,...}` dönerse kayıt tamamlanmış demektir. Bu kayıt kendiliğinden günlük olarak
+   yenilenir (bkz. `vercel.json`), elle tekrar yapmana gerek yok.

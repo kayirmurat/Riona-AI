@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { AIProvider, ChatMessage, ToolDefinition, ToolChoice } from "../types";
+import type { AIProvider, ChatMessage, ToolDefinition, ToolChoice, ResponseFormat } from "../types";
 
 export class OpenAIAdapter implements AIProvider {
   name = "openai";
@@ -11,7 +11,12 @@ export class OpenAIAdapter implements AIProvider {
     this.model = model;
   }
 
-  async chat(messages: ChatMessage[], tools?: ToolDefinition[], toolChoice?: ToolChoice): Promise<ChatMessage> {
+  async chat(
+    messages: ChatMessage[],
+    tools?: ToolDefinition[],
+    toolChoice?: ToolChoice,
+    responseFormat?: ResponseFormat
+  ): Promise<ChatMessage> {
     const openaiMessages = messages.map((m) => {
       if (m.role === "tool") {
         return { role: "tool" as const, content: m.content, tool_call_id: m.tool_call_id! };
@@ -45,6 +50,7 @@ export class OpenAIAdapter implements AIProvider {
       messages: openaiMessages as any,
       tools: openaiTools,
       tool_choice: openaiTools ? (openaiToolChoice ?? "auto") : undefined,
+      response_format: responseFormat,
     } as any);
 
     const choice = response.choices[0].message;

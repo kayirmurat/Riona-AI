@@ -39,7 +39,9 @@ export async function middleware(req: NextRequest) {
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth/login") ||
-    pathname.startsWith("/api/cron")
+    pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/api/gmail/watch") ||
+    pathname.startsWith("/api/webhooks/gmail")
   ) {
     return NextResponse.next();
   }

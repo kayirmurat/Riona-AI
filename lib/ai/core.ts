@@ -1,20 +1,10 @@
-import type { AIProvider, ChatMessage, ToolChoice } from "./types";
-import { OpenAIAdapter } from "./adapters/openai";
+import type { ChatMessage, ToolChoice } from "./types";
+import { getProvider } from "./provider";
 import { getHistory, saveTurn } from "./memory";
 import { availableTools, getToolByName } from "./toolRegistry";
 import { createPendingAction, getLatestPendingAction, updatePendingActionStatus } from "./approval";
 import { touchOrCreateConversation } from "./conversations";
 import { getRecentFacts } from "./memoryFacts";
-
-function getProvider(): AIProvider {
-  const providerName = process.env.AI_PROVIDER ?? "openai";
-  switch (providerName) {
-    case "openai":
-      return new OpenAIAdapter(process.env.OPENAI_API_KEY ?? "");
-    default:
-      throw new Error(`Bilinmeyen AI_PROVIDER: ${providerName}`);
-  }
-}
 
 const BASE_SYSTEM_PROMPT =
   "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gerçekten Gmail ve Google Calendar hesaplarına bağlısın. get_recent_emails, get_upcoming_events, create_email_draft ve get_email_briefing araçlarıyla gerçek işlemler yapabiliyorsun. Kullanıcı bir taslak/e-posta/takvimden bahsettiğinde bunu asla sorgulama veya bağlı olmadığını varsayma, doğrudan ilgili aracı çağır. Kullanıcı günlük durumu, bekleyen onayları veya 'mailler nasıl' gibi genel bir şey sorduğunda get_email_briefing aracını kullanarak taranan mailleri ve bekleyen onayları hatırlat. Kullanıcının farklı bir sohbette (oturumda) söylediği ama burada tekrar etmediği bir tercih/karar sorulursa 'bilmiyorum' deme — aşağıdaki 'Bilinen kalıcı bilgiler' listesine bak, orada varsa onu kullan. Kullanıcı kalıcı olarak hatırlanması gereken bir tercih/karar belirttiğinde remember_fact aracını çağır. Kısa, net ve yardımsever cevaplar ver.";

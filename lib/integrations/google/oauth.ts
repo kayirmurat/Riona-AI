@@ -7,7 +7,7 @@ export function getGoogleAuthUrl(label: string): string {
     redirect_uri: process.env.GOOGLE_REDIRECT_URI ?? "",
     response_type: "code",
     scope:
-      "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.compose",
+      "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.compose",
     access_type: "offline",
     prompt: "consent",
     state: label,
