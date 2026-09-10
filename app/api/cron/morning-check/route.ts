@@ -66,7 +66,8 @@ Kurallar:
       meeting_end: parsed.meeting_end ?? null,
       meeting_location: parsed.meeting_location ?? null,
     };
-  } catch {
+  } catch (err) {
+    console.error("[morning-check] classifyEmail hatası, needs_reply=false döndürülüyor:", err);
     return fallback;
   }
 }
@@ -99,6 +100,7 @@ export async function GET(req: Request) {
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       const listData = await listRes.json();
+      console.log(`[morning-check] account=${acc.label} gmailStatus=${listRes.status} rawMessages=${(listData.messages ?? []).length} resultSizeEstimate=${listData.resultSizeEstimate}`);
 
       if (!listRes.ok) {
         debug.push({ account: acc.label, gmailError: listData });
@@ -118,7 +120,10 @@ export async function GET(req: Request) {
           .eq("gmail_message_id", m.id)
           .eq("account_label", acc.label)
           .maybeSingle();
-        if (existingRow) continue;
+        if (existingRow) {
+          console.log(`[morning-check] account=${acc.label} message=${m.id} zaten taranmış, atlanıyor`);
+          continue;
+        }
 
         const msgRes = await fetch(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`,
@@ -131,6 +136,7 @@ export async function GET(req: Request) {
         const snippet = msgData.snippet ?? "";
 
         if (/no-?reply|notification|noreply/i.test(from)) {
+          console.log(`[morning-check] account=${acc.label} message=${m.id} from="${from}" no-reply/notification olarak atlandı`);
           await supabase.from("scanned_emails").insert({
             gmail_message_id: m.id,
             account_label: acc.label,
@@ -145,6 +151,7 @@ export async function GET(req: Request) {
         }
 
         const classification = await classifyEmail(from, subject, snippet);
+        console.log(`[morning-check] account=${acc.label} message=${m.id} subject="${subject}" needs_reply=${classification.needs_reply} is_meeting=${classification.is_meeting}`);
 
         let pendingActionId: string | null = null;
         let draftSubject: string | null = null;
@@ -201,6 +208,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, scanned: scannedCount, debug });
   } catch (err: any) {
+    console.error("[morning-check] taramada beklenmeyen hata:", err);
     return NextResponse.json({ success: false, error: err?.message ?? String(err) }, { status: 500 });
   }
 }
