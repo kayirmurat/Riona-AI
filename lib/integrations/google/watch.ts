@@ -60,6 +60,8 @@ export async function fetchHistorySince(email: string, accessToken: string, star
   }
 
   const data = await res.json();
+  console.log(`[watch] history.list ham yanıt: email=${email} startHistoryId=${startHistoryId} newHistoryId=${data.historyId} historyRecords=${(data.history ?? []).length} raw=${JSON.stringify(data.history ?? []).slice(0, 2000)}`);
+
   const messageIds = new Set<string>();
   for (const record of data.history ?? []) {
     for (const added of record.messagesAdded ?? []) {
