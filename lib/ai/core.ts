@@ -3,6 +3,8 @@ import { OpenAIAdapter } from "./adapters/openai";
 import { getHistory, saveTurn } from "./memory";
 import { availableTools, getToolByName } from "./toolRegistry";
 import { createPendingAction, getLatestPendingAction, updatePendingActionStatus } from "./approval";
+import { touchOrCreateConversation } from "./conversations";
+import { getRecentFacts } from "./memoryFacts";
 
 function getProvider(): AIProvider {
   const providerName = process.env.AI_PROVIDER ?? "openai";
@@ -14,11 +16,19 @@ function getProvider(): AIProvider {
   }
 }
 
-const SYSTEM_PROMPT: ChatMessage = {
-  role: "system",
-  content:
-    "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gerçekten Gmail ve Google Calendar hesaplarına bağlısın. get_recent_emails, get_upcoming_events, create_email_draft ve get_email_briefing araçlarıyla gerçek işlemler yapabiliyorsun. Kullanıcı bir taslak/e-posta/takvimden bahsettiğinde bunu asla sorgulama veya bağlı olmadığını varsayma, doğrudan ilgili aracı çağır. Kullanıcı günlük durumu, bekleyen onayları veya 'mailler nasıl' gibi genel bir şey sorduğunda get_email_briefing aracını kullanarak taranan mailleri ve bekleyen onayları hatırlat. Kısa, net ve yardımsever cevaplar ver.",
-};
+const BASE_SYSTEM_PROMPT =
+  "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gerçekten Gmail ve Google Calendar hesaplarına bağlısın. get_recent_emails, get_upcoming_events, create_email_draft ve get_email_briefing araçlarıyla gerçek işlemler yapabiliyorsun. Kullanıcı bir taslak/e-posta/takvimden bahsettiğinde bunu asla sorgulama veya bağlı olmadığını varsayma, doğrudan ilgili aracı çağır. Kullanıcı günlük durumu, bekleyen onayları veya 'mailler nasıl' gibi genel bir şey sorduğunda get_email_briefing aracını kullanarak taranan mailleri ve bekleyen onayları hatırlat. Kullanıcının farklı bir sohbette (oturumda) söylediği ama burada tekrar etmediği bir tercih/karar sorulursa 'bilmiyorum' deme — aşağıdaki 'Bilinen kalıcı bilgiler' listesine bak, orada varsa onu kullan. Kullanıcı kalıcı olarak hatırlanması gereken bir tercih/karar belirttiğinde remember_fact aracını çağır. Kısa, net ve yardımsever cevaplar ver.";
+
+async function buildSystemPrompt(): Promise<ChatMessage> {
+  const facts = await getRecentFacts();
+  if (facts.length === 0) return { role: "system", content: BASE_SYSTEM_PROMPT };
+
+  const factsList = facts.map((f) => `- ${f}`).join("\n");
+  return {
+    role: "system",
+    content: `${BASE_SYSTEM_PROMPT}\n\nBilinen kalıcı bilgiler/tercihler (diğer oturumlarda öğrenildi):\n${factsList}`,
+  };
+}
 
 const BRIEFING_KEYWORDS = ["hatırlat", "brifing", "briefing", "özet", "bekleyen", "durum ne", "ne var", "bugün mail"];
 const EMAIL_KEYWORDS = ["mail", "e-posta", "eposta", "gmail", "gelen kutu", "inbox"];
@@ -38,12 +48,15 @@ const APPROVE_WORDS = ["onaylıyorum", "onayla", "evet yap", "onay", "tamam yap"
 const REJECT_WORDS = ["iptal", "vazgeç", "yapma"];
 
 export async function askRiona(conversationId: string, userMessage: string): Promise<string> {
+  await touchOrCreateConversation(conversationId, userMessage);
+  const toolContext = { conversationId };
+
   const pending = await getLatestPendingAction(conversationId);
   if (pending) {
     const lower = userMessage.toLowerCase();
     if (APPROVE_WORDS.some((w) => lower.includes(w))) {
       const tool = getToolByName(pending.tool_name);
-      const result = tool ? await tool.execute(pending.arguments) : "Araç bulunamadı.";
+      const result = tool ? await tool.execute(pending.arguments, toolContext) : "Araç bulunamadı.";
       await updatePendingActionStatus(pending.id, "executed");
       await saveTurn(conversationId, { role: "user", content: userMessage }, { role: "assistant", content: result });
       return result;
@@ -58,7 +71,8 @@ export async function askRiona(conversationId: string, userMessage: string): Pro
 
   const provider = getProvider();
   const history = await getHistory(conversationId);
-  const messages: ChatMessage[] = [SYSTEM_PROMPT, ...history, { role: "user", content: userMessage }];
+  const systemPrompt = await buildSystemPrompt();
+  const messages: ChatMessage[] = [systemPrompt, ...history, { role: "user", content: userMessage }];
 
   const toolDefs = availableTools.map((t) => t.definition);
   const forced = detectForcedTool(userMessage);
@@ -78,7 +92,7 @@ export async function askRiona(conversationId: string, userMessage: string): Pro
       await createPendingAction(conversationId, tool.definition.name, args, description);
       finalText = `Bunu yapmak için onayına ihtiyacım var:\n\n${description}\n\nOnaylıyorsan "onaylıyorum" yaz, istemiyorsan "iptal" yaz.`;
     } else {
-      const toolResult = tool ? await tool.execute(args) : "Araç bulunamadı.";
+      const toolResult = tool ? await tool.execute(args, toolContext) : "Araç bulunamadı.";
       const followUpMessages: ChatMessage[] = [
         ...messages,
         firstResponse,
