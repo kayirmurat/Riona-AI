@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabase } from "../../../lib/db/supabase";
 
+export const dynamic = "force-dynamic";
+
 const PANEL_WINDOW_HOURS = 48;
 
 export async function GET() {

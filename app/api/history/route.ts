@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getHistory } from "../../../lib/ai/memory";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const conversationId = req.nextUrl.searchParams.get("conversationId");
 

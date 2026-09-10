@@ -3,6 +3,8 @@ import { supabase } from "../../../lib/db/supabase";
 import { getToolByName } from "../../../lib/ai/toolRegistry";
 import { updatePendingActionStatus } from "../../../lib/ai/approval";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const { data, error } = await supabase
     .from("pending_actions")
