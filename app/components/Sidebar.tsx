@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import NotificationToggle from "./NotificationToggle";
+import { Logo } from "./Logo";
 
 interface Conversation {
   id: string;
@@ -101,7 +102,10 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose }: Sidebar
         }`}
       >
         <div className="flex items-center justify-between px-4 py-4">
-          <h1 className="text-sm font-semibold text-ink">Riona AI</h1>
+          <div className="flex items-center gap-2">
+            <Logo size={24} />
+            <h1 className="text-sm font-semibold text-ink">Riona AI</h1>
+          </div>
           <button
             className="rounded-md p-1 text-ink-muted hover:bg-surface-sunken md:hidden"
             onClick={onClose}
