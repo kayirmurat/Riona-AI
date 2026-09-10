@@ -177,5 +177,6 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
     status: classification.needs_reply ? "pending" : "info",
   });
   if (error) return "already_scanned";
+  console.log(`[mailProcessing] kaydedildi: account=${account.label} message=${messageId} subject="${subject}" needs_reply=${classification.needs_reply}`);
   return "inserted";
 }

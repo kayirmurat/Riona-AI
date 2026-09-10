@@ -65,6 +65,12 @@ export async function fetchHistorySince(email: string, accessToken: string, star
   const messageIds = new Set<string>();
   for (const record of data.history ?? []) {
     for (const added of record.messagesAdded ?? []) {
+      const labelIds: string[] = added.message?.labelIds ?? [];
+      // Bir mail yazılırken Gmail önce geçici bir DRAFT nesnesi oluşturur;
+      // gönderilince o taslak silinip yerine yeni bir mesaj ID'si gelir.
+      // Taslağın ID'si messagesAdded'da görünse de artık var olmadığı için
+      // messages.get her zaman 404 döner — baştan eleniyor.
+      if (labelIds.includes("DRAFT")) continue;
       if (added.message?.id) messageIds.add(added.message.id as string);
     }
   }
