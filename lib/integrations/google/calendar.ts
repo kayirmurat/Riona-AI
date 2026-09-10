@@ -25,6 +25,37 @@ async function fetchEventsForAccount(identifier: string, maxResults: number): Pr
     .join("\n\n");
 }
 
+interface MeetingEvent {
+  title: string;
+  start: string;
+  end: string;
+  location?: string | null;
+  description?: string;
+}
+
+export async function createCalendarNote(
+  accountIdentifier: string,
+  event: MeetingEvent
+): Promise<{ ok: boolean; message: string }> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return { ok: false, message: "Bu hesap bağlı değil." };
+
+  const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      summary: event.title,
+      location: event.location ?? undefined,
+      description: event.description,
+      start: { dateTime: event.start },
+      end: { dateTime: event.end },
+    }),
+  });
+
+  if (!res.ok) return { ok: false, message: "Takvim etkinliği oluşturulamadı." };
+  return { ok: true, message: "Takvime eklendi." };
+}
+
 export async function fetchUpcomingEvents(maxResults = 5, accountIdentifier?: string): Promise<string> {
   if (accountIdentifier) {
     return fetchEventsForAccount(accountIdentifier, maxResults);

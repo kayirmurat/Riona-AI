@@ -9,5 +9,14 @@ export async function GET() {
     .limit(50);
 
   if (error) return NextResponse.json({ error: "Liste alınamadı." }, { status: 500 });
-  return NextResponse.json({ emails: data ?? [] });
+
+  const seen = new Set<string>();
+  const deduped = (data ?? []).filter((row: any) => {
+    const key = `${row.account_label}:${row.gmail_message_id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return NextResponse.json({ emails: deduped });
 }

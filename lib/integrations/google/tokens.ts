@@ -10,13 +10,28 @@ interface GoogleAccountTokens {
 }
 
 export async function saveGoogleAccount(account: GoogleAccountTokens): Promise<void> {
-  await supabase.from("google_accounts").upsert(account);
+  const { data: existing } = await supabase
+    .from("google_accounts")
+    .select("email")
+    .eq("email", account.email)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from("google_accounts").update(account).eq("email", account.email);
+  } else {
+    await supabase.from("google_accounts").insert(account);
+  }
 }
 
 export async function listGoogleAccounts(): Promise<{ email: string; label: string }[]> {
   const { data, error } = await supabase.from("google_accounts").select("email, label");
   if (error || !data) return [];
-  return data;
+
+  const seen = new Map<string, { email: string; label: string }>();
+  for (const row of data as { email: string; label: string }[]) {
+    if (!seen.has(row.email)) seen.set(row.email, row);
+  }
+  return Array.from(seen.values());
 }
 
 function normalize(text: string): string {

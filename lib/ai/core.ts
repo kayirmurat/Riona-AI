@@ -17,15 +17,17 @@ function getProvider(): AIProvider {
 const SYSTEM_PROMPT: ChatMessage = {
   role: "system",
   content:
-    "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gerçekten Gmail ve Google Calendar hesaplarına bağlısın. get_recent_emails, get_upcoming_events ve create_email_draft araçlarıyla gerçek işlemler yapabiliyorsun. Kullanıcı bir taslak/e-posta/takvimden bahsettiğinde bunu asla sorgulama veya bağlı olmadığını varsayma, doğrudan ilgili aracı çağır. Kısa, net ve yardımsever cevaplar ver.",
+    "Sen Riona AI'sin, kullanıcının kişisel yapay zeka asistanısın. Gerçekten Gmail ve Google Calendar hesaplarına bağlısın. get_recent_emails, get_upcoming_events, create_email_draft ve get_email_briefing araçlarıyla gerçek işlemler yapabiliyorsun. Kullanıcı bir taslak/e-posta/takvimden bahsettiğinde bunu asla sorgulama veya bağlı olmadığını varsayma, doğrudan ilgili aracı çağır. Kullanıcı günlük durumu, bekleyen onayları veya 'mailler nasıl' gibi genel bir şey sorduğunda get_email_briefing aracını kullanarak taranan mailleri ve bekleyen onayları hatırlat. Kısa, net ve yardımsever cevaplar ver.",
 };
 
+const BRIEFING_KEYWORDS = ["hatırlat", "brifing", "briefing", "özet", "bekleyen", "durum ne", "ne var", "bugün mail"];
 const EMAIL_KEYWORDS = ["mail", "e-posta", "eposta", "gmail", "gelen kutu", "inbox"];
 const CALENDAR_KEYWORDS = ["takvim", "calendar", "etkinlik", "toplantı", "randevu"];
 const DRAFT_KEYWORDS = ["taslak", "draft"];
 
 function detectForcedTool(userMessage: string): string | null {
   const lower = userMessage.toLowerCase();
+  if (BRIEFING_KEYWORDS.some((k) => lower.includes(k))) return "get_email_briefing";
   if (DRAFT_KEYWORDS.some((k) => lower.includes(k))) return "create_email_draft";
   if (EMAIL_KEYWORDS.some((k) => lower.includes(k))) return "get_recent_emails";
   if (CALENDAR_KEYWORDS.some((k) => lower.includes(k))) return "get_upcoming_events";
