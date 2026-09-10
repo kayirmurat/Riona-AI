@@ -47,15 +47,7 @@ function encodeSubject(subject: string): string {
   return `=?UTF-8?B?${base64Subject}?=`;
 }
 
-export async function createEmailDraft(
-  accountIdentifier: string,
-  to: string,
-  subject: string,
-  body: string
-): Promise<string> {
-  const accessToken = await getValidAccessTokenFor(accountIdentifier);
-  if (!accessToken) return "Bu hesap bağlı değil.";
-
+function buildEncodedMessage(to: string, subject: string, body: string): string {
   const rawMessage = [
     `To: ${to}`,
     `Subject: ${encodeSubject(subject)}`,
@@ -65,11 +57,23 @@ export async function createEmailDraft(
     Buffer.from(body, "utf-8").toString("base64"),
   ].join("\n");
 
-  const encodedMessage = Buffer.from(rawMessage)
+  return Buffer.from(rawMessage)
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
+}
+
+export async function createEmailDraft(
+  accountIdentifier: string,
+  to: string,
+  subject: string,
+  body: string
+): Promise<string> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return "Bu hesap bağlı değil.";
+
+  const encodedMessage = buildEncodedMessage(to, subject, body);
 
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
     method: "POST",
@@ -79,4 +83,20 @@ export async function createEmailDraft(
 
   if (!res.ok) return "Taslak oluşturulamadı.";
   return "Taslak başarıyla Gmail'de oluşturuldu (Taslaklar klasörüne bak).";
+}
+
+export async function sendEmail(accountIdentifier: string, to: string, subject: string, body: string): Promise<string> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return "Bu hesap bağlı değil.";
+
+  const encodedMessage = buildEncodedMessage(to, subject, body);
+
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw: encodedMessage }),
+  });
+
+  if (!res.ok) return "Mail gönderilemedi.";
+  return "Mail başarıyla gönderildi.";
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "../../../lib/db/supabase";
 import { getToolByName } from "../../../lib/ai/toolRegistry";
 import { updatePendingActionStatus } from "../../../lib/ai/approval";
+import { createEmailDraft, sendEmail } from "../../../lib/integrations/google/gmail";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +23,19 @@ export async function POST(req: NextRequest) {
   const { data: pending } = await supabase.from("pending_actions").select("*").eq("id", id).single();
   if (!pending) return NextResponse.json({ error: "Kayıt bulunamadı." }, { status: 404 });
 
-  if (action === "approve") {
+  if (action === "approve_draft" || action === "approve_send" || action === "approve") {
     const finalArgs = overrides ? { ...pending.arguments, ...overrides } : pending.arguments;
-    const tool = getToolByName(pending.tool_name);
-    const result = tool ? await tool.execute(finalArgs) : "Araç bulunamadı.";
+
+    let result: string;
+    if (pending.tool_name === "create_email_draft" && action === "approve_send") {
+      result = await sendEmail(finalArgs.account, finalArgs.to, finalArgs.subject, finalArgs.body);
+    } else if (pending.tool_name === "create_email_draft") {
+      result = await createEmailDraft(finalArgs.account, finalArgs.to, finalArgs.subject, finalArgs.body);
+    } else {
+      const tool = getToolByName(pending.tool_name);
+      result = tool ? await tool.execute(finalArgs) : "Araç bulunamadı.";
+    }
+
     await updatePendingActionStatus(id, "executed");
     await supabase.from("scanned_emails").update({ status: "executed" }).eq("pending_action_id", id);
     return NextResponse.json({ success: true, result });

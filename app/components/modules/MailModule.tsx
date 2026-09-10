@@ -50,7 +50,11 @@ export default function MailModule() {
     loadScannedEmails();
   }, []);
 
-  async function respondToPending(pendingActionId: string, action: "approve" | "reject", emailId: string) {
+  async function respondToPending(
+    pendingActionId: string,
+    action: "approve_draft" | "approve_send" | "reject",
+    emailId: string
+  ) {
     const editedValues = edits[emailId];
     await fetch("/api/pending-actions", {
       method: "POST",
@@ -59,7 +63,7 @@ export default function MailModule() {
         id: pendingActionId,
         action,
         overrides:
-          action === "approve" && editedValues
+          action !== "reject" && editedValues
             ? { subject: editedValues.subject, body: editedValues.body }
             : undefined,
       }),
@@ -163,12 +167,18 @@ export default function MailModule() {
                   rows={4}
                   className="mb-2 w-full rounded border border-border px-2 py-1 text-sm"
                 />
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "approve", e.id)}
+                    onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "approve_draft", e.id)}
+                    className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                  >
+                    Taslak Olarak Kaydet
+                  </button>
+                  <button
+                    onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "approve_send", e.id)}
                     className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
                   >
-                    Onayla
+                    Gönder
                   </button>
                   <button
                     onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "reject", e.id)}
