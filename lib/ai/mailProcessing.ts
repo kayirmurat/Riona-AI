@@ -104,7 +104,8 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
     await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
   }
   if (!msgRes || !msgRes.ok) {
-    console.error(`[mailProcessing] mesaj alınamadı: account=${account.label} message=${messageId} status=${msgRes?.status}`);
+    const errorBody = msgRes ? await msgRes.text().catch(() => "") : "";
+    console.error(`[mailProcessing] mesaj alınamadı: account=${account.label} message=${messageId} status=${msgRes?.status} body=${errorBody}`);
     return "fetch_failed";
   }
   const msgData = await msgRes.json();
