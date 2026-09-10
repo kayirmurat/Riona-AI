@@ -90,11 +90,21 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
     .maybeSingle();
   if (existingRow) return "already_scanned";
 
-  const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!msgRes.ok) {
-    console.error(`[mailProcessing] mesaj alınamadı: account=${account.label} message=${messageId} status=${msgRes.status}`);
+  // Gmail push bildirimi geldikten hemen sonra mesaj bazen henüz tam olarak
+  // sorgulanabilir olmuyor (kısa bir tutarlılık gecikmesi) — 404 alınırsa
+  // birkaç kez, artan aralıklarla tekrar denenir.
+  const RETRY_DELAYS_MS = [1000, 2000, 3000];
+  let msgRes: Response | null = null;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (msgRes.ok || msgRes.status !== 404 || attempt === RETRY_DELAYS_MS.length) break;
+    console.log(`[mailProcessing] mesaj henüz hazır değil (404), tekrar denenecek: account=${account.label} message=${messageId} attempt=${attempt + 1}`);
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+  }
+  if (!msgRes || !msgRes.ok) {
+    console.error(`[mailProcessing] mesaj alınamadı: account=${account.label} message=${messageId} status=${msgRes?.status}`);
     return "fetch_failed";
   }
   const msgData = await msgRes.json();
