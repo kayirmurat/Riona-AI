@@ -38,6 +38,10 @@ export default function Home() {
   async function loadScannedEmails() {
     try {
       const res = await fetch("/api/scanned-emails");
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       const data = await res.json();
       const emails: ScannedEmail[] = data.emails ?? [];
       setScannedEmails(emails);
@@ -49,7 +53,7 @@ export default function Home() {
       });
       setEdits((prev) => ({ ...initialEdits, ...prev }));
     } catch (e) {
-      // sessiz geç
+      console.error("Taranan mailler yüklenemedi:", e);
     }
   }
 
