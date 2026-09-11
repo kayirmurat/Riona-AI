@@ -9,8 +9,12 @@ export async function registerCalendarWatch(
 ): Promise<{ ok: boolean; message: string }> {
   const pathSecret = process.env.CALENDAR_WEBHOOK_PATH_SECRET;
   const appBaseUrl = process.env.APP_BASE_URL;
-  if (!pathSecret || !appBaseUrl) {
-    return { ok: false, message: "CALENDAR_WEBHOOK_PATH_SECRET / APP_BASE_URL eksik." };
+  const missing = [
+    !pathSecret && "CALENDAR_WEBHOOK_PATH_SECRET",
+    !appBaseUrl && "APP_BASE_URL",
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    return { ok: false, message: `Eksik env değişkeni: ${missing.join(", ")}` };
   }
 
   const channelId = crypto.randomUUID();
