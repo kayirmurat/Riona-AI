@@ -56,7 +56,19 @@ async function callMeetingBaas(meetingUrl: string, webhookUrl: string): Promise<
     // Not: bot toplantıya "Riona AI Notetaker" adıyla görünür, isimli bir katılımcı
     // olarak girer — gizli/sessiz bir kayıt değil. Toplantı katılımcılarının bundan
     // önceden haberdar edilmesi gerekebilir (bkz. README'deki gizlilik notu).
-    body: JSON.stringify({ meeting_url: meetingUrl, bot_name: BOT_NAME, webhook_url: webhookUrl }),
+    //
+    // waiting_room_timeout: bot LEAD_WINDOW_MIN kadar erken gönderiliyor ve hemen
+    // katılmaya çalışıyor; Meeting BaaS'ın varsayılan bekleme süresi (600sn/10dk)
+    // bizim gönderme penceremizden kısa olduğu için toplantı henüz başlamadan bot
+    // zaman aşımına uğrayıp ayrılıyordu (canlı testte "call_ended" + boş transkript
+    // olarak gözlemlendi). Bekleme süresini gönderme penceresi + pay kadar açıkça
+    // uzatıyoruz ki bot gerçek toplantı başlayana kadar beklesin.
+    body: JSON.stringify({
+      meeting_url: meetingUrl,
+      bot_name: BOT_NAME,
+      webhook_url: webhookUrl,
+      automatic_leave: { waiting_room_timeout: (LEAD_WINDOW_MIN + 10) * 60 },
+    }),
   });
 
   const data = await res.json().catch(() => null);
