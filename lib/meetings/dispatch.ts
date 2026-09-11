@@ -76,17 +76,21 @@ async function callMeetingBaas(meetingUrl: string, webhookUrl: string): Promise<
     // kareyi gösteriyor, kullanıcı diğer katılımcıları ve ekran paylaşımlarını
     // da görmek istediği için galeri görünümüne geçildi.
     //
-    // bot_image geçici olarak kaldırıldı: canlı testte dispatch HTTP 422 almaya
-    // başladı (bot_image eklenmesiyle aynı ana denk geldi) — Meeting BaaS'ın
-    // SVG formatını (icon.svg) kabul etmiyor olması muhtemel, PNG/JPG formatında
-    // bir versiyon hazırlanıp tekrar eklenecek.
+    // speech_to_text gerçek hatası (canlı testte Meeting BaaS'ın ham hata
+    // gövdesinden görüldü): "data did not match any variant of untagged enum
+    // SpeechToText" — {provider: "gladia"} şekli obje varyantı için gereken
+    // api_key alanını içermiyordu. Doğru şekil: düz bir string ("Default"),
+    // Meeting BaaS'ın kendi bundled transkripsiyon servisini kullanır, ayrı
+    // bir sağlayıcı API anahtarı gerektirmez. bot_image de aslında suçlu
+    // değilmiş (kaldırılınca da 422 devam etti) — geri eklendi.
     body: JSON.stringify({
       meeting_url: meetingUrl,
       bot_name: BOT_NAME,
       webhook_url: webhookUrl,
+      bot_image: `${process.env.APP_BASE_URL}/icon.svg`,
       recording_mode: "gallery_view",
       automatic_leave: { waiting_room_timeout: (LEAD_WINDOW_MIN + 10) * 60, silence_timeout: 120 },
-      speech_to_text: { provider: "gladia" },
+      speech_to_text: "Default",
     }),
   });
 
