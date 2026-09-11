@@ -90,7 +90,11 @@ async function callMeetingBaas(meetingUrl: string, webhookUrl: string): Promise<
       bot_image: `${process.env.APP_BASE_URL}/icon.svg`,
       recording_mode: "gallery_view",
       automatic_leave: { waiting_room_timeout: (LEAD_WINDOW_MIN + 10) * 60, silence_timeout: 120 },
-      speech_to_text: "Default",
+      // "Default" isteği artık kabul ediliyor (422 çözüldü) ama transkript
+      // hâlâ boş geliyor — muhtemelen "Default" motoru Türkçe konuşmayı
+      // desteklemiyor. Gladia açıkça çok dilli (Türkçe dahil) olduğu için
+      // deneniyor.
+      speech_to_text: "Gladia",
     }),
   });
 
