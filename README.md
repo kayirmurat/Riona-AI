@@ -74,6 +74,32 @@ toplantılara göre, diğer katılımcıları önceden bilgilendirmen yasal/etik
    Actions → "New repository secret" → adı `CRON_SECRET`, değeri Vercel'deki `CRON_SECRET` ile
    **birebir aynı**.
 
+## Gerçek Zamanlı Takvim Bildirimleri Kurulumu (Stage 15.6)
+
+Toplantı botu şu ana kadar GitHub Actions'ın her 10 dakikada bir taramasıyla çalışıyordu —
+yeni oluşturduğun bir toplantı bota ulaşana kadar 10 dakikaya kadar gecikme olabiliyordu.
+Bu adımlar Google'ın kendi anlık bildirim sistemini (Calendar push notifications) kurup bu
+gecikmeyi ortadan kaldırıyor. **Not:** GitHub Actions'daki periyodik tarama kaldırılmıyor,
+kalıyor — bu sadece yeni/değişen toplantılar için ek, anlık bir hızlı yol.
+
+1. **Google Search Console'da alan (domain) doğrula**: search.google.com/search-console →
+   "Add Property" → **"URL prefix"** seç (üstteki "Domain" seçeneğini DEĞİL) →
+   `https://riona-ai-tau.vercel.app` yaz → doğrulama yöntemi olarak **"HTML file upload"**
+   seç → indirilen dosyayı (örn. `google1234abcd.html`) bana ilet, ben deploy edeyim →
+   dosya yayınlandıktan sonra Search Console'da "Verify" butonuna bas.
+2. **Google Cloud Console'da domain'i kaydet**: console.cloud.google.com → Gmail kurulumunda
+   kullandığın aynı proje → sol menüden "APIs & Services" → "Domain verification" (veya
+   "Credentials" sayfasındaki ilgili bölüm) → Search Console'da doğruladığın
+   `riona-ai-tau.vercel.app`'i seçip ekle.
+3. **`CALENDAR_WEBHOOK_PATH_SECRET` değerini kendin seç**: rastgele, uzun bir string
+   (diğer webhook secret'larıyla aynı mantık).
+4. **Vercel'e env değişkenini gir**: Settings → Environment Variables →
+   `CALENDAR_WEBHOOK_PATH_SECRET` — Production ve Preview ikisi için de işaretli olsun.
+5. **Watch kaydını başlat**: kod deploy edildikten sonra tarayıcıda
+   `https://riona-ai-tau.vercel.app/api/calendar/watch?secret=<CRON_SECRET-degerin>`
+   adresini aç — `{"success":true,...}` dönerse kayıt tamamlanmış demektir. Bu kayıt
+   kendiliğinden günlük olarak yenilenir (bkz. `vercel.json`), elle tekrar yapmana gerek yok.
+
 ## Web Push Bildirimleri Kurulumu (Stage 14, Stage 5)
 
 Bunun için Google Cloud'a gerek yok — bildirim anahtarları (VAPID) kod tarafında zaten üretildi.
