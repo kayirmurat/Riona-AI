@@ -25,9 +25,20 @@ export async function registerCalendarWatch(
   // varsa eskisini stop() ile düzgünce kapatıyoruz.
   const { data: existing } = await supabase
     .from("calendar_watch_state")
-    .select("channel_id, resource_id")
+    .select("channel_id, resource_id, updated_at")
     .eq("email", email)
     .maybeSingle();
+
+  // Tarayıcının aynı GET isteğini neredeyse aynı anda iki kez göndermesi
+  // (prefetch/önizleme davranışı) canlı testte gözlemlendi — her seferinde
+  // yeni bir kanal açılıp öncekinin stop() edilmesi bir yarış durumu yaratıyor
+  // (ikisi de eskiyi okuyup kendi yeni kanalını açıyor, biri "yetim" kalıyor).
+  // Son kayıttan bu yana 60 saniyeden az geçtiyse tekrar kayıt yapmadan
+  // mevcut kanalı koru — bu işlem elle/günlük cron ile zaten bu kadar sık
+  // tekrarlanmaz, meşru bir yeniden kayıt ihtiyacı bu kadar yakın olmaz.
+  if (existing?.updated_at && Date.now() - new Date(existing.updated_at).getTime() < 60_000) {
+    return { ok: true, message: "Yakın zamanda zaten kaydedilmiş, atlandı (çift istek koruması)." };
+  }
 
   if (existing?.channel_id && existing?.resource_id) {
     await fetch("https://www.googleapis.com/calendar/v3/channels/stop", {
