@@ -1,0 +1,20 @@
+name: Meeting bot dispatch
+
+# Vercel Hobby planı cron'ları günde bir defadan sık çalıştıramıyor, ama toplantı
+# botu birkaç dakikalık pencerede tetiklenmeli — bu yüzden Vercel cron yerine
+# GitHub Actions'ın kendi zamanlayıcısı kullanılıyor. Sadece mevcut, secret'la
+# korumalı /api/meetings/dispatch endpoint'ini dışarıdan çağırıyor.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/meetings/dispatch
+        run: |
+          curl -sS -f -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://riona-ai-tau.vercel.app/api/meetings/dispatch"
