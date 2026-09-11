@@ -71,10 +71,18 @@ async function callMeetingBaas(meetingUrl: string, webhookUrl: string): Promise<
     // kalınca bot hemen ayrılmıyor, 10 dakika daha kayıt/bekleme yapıyordu
     // (canlı testte bot 30sn'de kabul edildiği halde ~10dk'lık kayıt oluştu).
     // 2 dakikaya çekiyoruz ki konuşma bitince bot makul bir sürede ayrılsın.
+    //
+    // bot_image: varsayılan avatar sadece "R" harfi gösteriyordu, kullanıcı
+    // Riona AI logosunu istedi. recording_mode: "gallery_view" — varsayılan
+    // "speaker_view" tek bir aktif kareyi gösteriyor, kullanıcı diğer
+    // katılımcıları ve ekran paylaşımlarını da görmek istediği için galeri
+    // görünümüne geçildi.
     body: JSON.stringify({
       meeting_url: meetingUrl,
       bot_name: BOT_NAME,
       webhook_url: webhookUrl,
+      bot_image: `${process.env.APP_BASE_URL}/icon.svg`,
+      recording_mode: "gallery_view",
       automatic_leave: { waiting_room_timeout: (LEAD_WINDOW_MIN + 10) * 60, silence_timeout: 120 },
       speech_to_text: { provider: "gladia" },
     }),
