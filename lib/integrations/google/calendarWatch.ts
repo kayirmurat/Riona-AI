@@ -17,6 +17,29 @@ export async function registerCalendarWatch(
     return { ok: false, message: `Eksik env değişkeni: ${missing.join(", ")}` };
   }
 
+  // Kayıt birden fazla kez tetiklenirse (elle tekrar açma, günlük yenileme cron'u)
+  // önceki kanal Google tarafında kapatılmadan yeni bir tane açılırsa, eski kanal
+  // "yetim" kalıp bize hâlâ bildirim göndermeye devam ediyor — biz veritabanında
+  // sadece en son kanal_id'yi tuttuğumuz için o bildirimler "bilinmeyen kanal"
+  // olarak reddediliyor (canlı testte gözlemlendi). Yeni kanal açmadan önce
+  // varsa eskisini stop() ile düzgünce kapatıyoruz.
+  const { data: existing } = await supabase
+    .from("calendar_watch_state")
+    .select("channel_id, resource_id")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (existing?.channel_id && existing?.resource_id) {
+    await fetch("https://www.googleapis.com/calendar/v3/channels/stop", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: existing.channel_id, resourceId: existing.resource_id }),
+    }).catch(() => {
+      // Kanal zaten süresi dolmuş/geçersizse stop() hata dönebilir — yeni kanalı
+      // açmayı engellemesin, en kötü ihtimalle eski kanal kendi süresi dolunca kapanır.
+    });
+  }
+
   const channelId = crypto.randomUUID();
   const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events/watch", {
     method: "POST",
