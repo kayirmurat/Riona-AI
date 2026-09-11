@@ -66,11 +66,16 @@ async function callMeetingBaas(meetingUrl: string, webhookUrl: string): Promise<
     // speech_to_text: canlı testte konuşma olmasına rağmen transkript hep boş
     // geliyordu — Meeting BaaS transkripsiyonu varsayılan olarak açmıyor, bu
     // alan açıkça gönderilmezse ses kaydedilse bile hiç transkript çıkmıyor.
+    //
+    // silence_timeout: varsayılanı 10 dakika — toplantı bitip herkes sessiz
+    // kalınca bot hemen ayrılmıyor, 10 dakika daha kayıt/bekleme yapıyordu
+    // (canlı testte bot 30sn'de kabul edildiği halde ~10dk'lık kayıt oluştu).
+    // 2 dakikaya çekiyoruz ki konuşma bitince bot makul bir sürede ayrılsın.
     body: JSON.stringify({
       meeting_url: meetingUrl,
       bot_name: BOT_NAME,
       webhook_url: webhookUrl,
-      automatic_leave: { waiting_room_timeout: (LEAD_WINDOW_MIN + 10) * 60 },
+      automatic_leave: { waiting_room_timeout: (LEAD_WINDOW_MIN + 10) * 60, silence_timeout: 120 },
       speech_to_text: { provider: "gladia" },
     }),
   });
