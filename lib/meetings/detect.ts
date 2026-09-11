@@ -54,17 +54,7 @@ export async function scanAndUpsertMeetings(): Promise<{ scanned: number; upsert
 
     for (const event of events) {
       const detected = detectMeetingLink(event);
-      if (!detected) {
-        // Geçici tanı log'u: hangi alanların dolu geldiğini görüp regex'i
-        // gerçek veriye göre ayarlamak için (link bulunamayan etkinlikler sessizce atlanıyordu).
-        console.log(
-          `[meetings/detect] link bulunamadı: event=${event.id} title=${JSON.stringify(event.summary)} ` +
-            `hangoutLink=${JSON.stringify(event.hangoutLink)} location=${JSON.stringify(event.location)} ` +
-            `description=${JSON.stringify(event.description?.slice(0, 300))} ` +
-            `conferenceData=${JSON.stringify(event.conferenceData)}`
-        );
-        continue;
-      }
+      if (!detected) continue;
 
       const startsAt = event.start?.dateTime ?? event.start?.date;
       if (!startsAt) continue;
