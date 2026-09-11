@@ -16,7 +16,7 @@ interface DetectedMeeting {
   platform: string;
 }
 
-function detectMeetingLink(event: RawCalendarEvent): DetectedMeeting | null {
+export function detectMeetingLink(event: RawCalendarEvent): DetectedMeeting | null {
   // Google Meet için Calendar'ın kendi verdiği kesin alan — regex'ten daha güvenilir.
   if (event.hangoutLink) {
     return { url: event.hangoutLink, platform: "google_meet" };
@@ -33,6 +33,43 @@ function detectMeetingLink(event: RawCalendarEvent): DetectedMeeting | null {
     if (match) return { url: match[0], platform };
   }
   return null;
+}
+
+interface Account {
+  email: string;
+  label: string;
+}
+
+// Tek bir event'i tespit edip upsert eder — hem tam tarama (scanAndUpsertMeetings)
+// hem Calendar push webhook'unun artımlı yolu bunu paylaşıyor, kopya mantık olmasın diye.
+export async function upsertMeetingFromEvent(event: RawCalendarEvent, account: Account): Promise<boolean> {
+  const detected = detectMeetingLink(event);
+  if (!detected) return false;
+
+  const startsAt = event.start?.dateTime ?? event.start?.date;
+  if (!startsAt) return false;
+
+  const { error } = await supabase.from("meetings").upsert(
+    {
+      calendar_event_id: event.id,
+      account_email: account.email,
+      account_label: account.label,
+      calendar_event_link: event.htmlLink ?? null,
+      meeting_url: detected.url,
+      platform: detected.platform,
+      title: event.summary ?? null,
+      starts_at: startsAt,
+      ends_at: event.end?.dateTime ?? event.end?.date ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "calendar_event_id,account_label" }
+  );
+
+  if (error) {
+    console.error(`[meetings/detect] upsert hatası: event=${event.id} account=${account.email} error=${error.message}`);
+    return false;
+  }
+  return true;
 }
 
 export async function scanAndUpsertMeetings(): Promise<{ scanned: number; upserted: number }> {
@@ -53,33 +90,7 @@ export async function scanAndUpsertMeetings(): Promise<{ scanned: number; upsert
     scanned += events.length;
 
     for (const event of events) {
-      const detected = detectMeetingLink(event);
-      if (!detected) continue;
-
-      const startsAt = event.start?.dateTime ?? event.start?.date;
-      if (!startsAt) continue;
-
-      const { error } = await supabase.from("meetings").upsert(
-        {
-          calendar_event_id: event.id,
-          account_email: account.email,
-          account_label: account.label,
-          calendar_event_link: event.htmlLink ?? null,
-          meeting_url: detected.url,
-          platform: detected.platform,
-          title: event.summary ?? null,
-          starts_at: startsAt,
-          ends_at: event.end?.dateTime ?? event.end?.date ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "calendar_event_id,account_label" }
-      );
-
-      if (error) {
-        console.error(`[meetings/detect] upsert hatası: event=${event.id} account=${account.email} error=${error.message}`);
-        continue;
-      }
-      upserted++;
+      if (await upsertMeetingFromEvent(event, account)) upserted++;
     }
   }
 

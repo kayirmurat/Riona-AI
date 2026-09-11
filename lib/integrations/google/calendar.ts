@@ -66,6 +66,64 @@ export async function fetchRawUpcomingEventItems(
   return (data.items ?? []) as RawCalendarEvent[];
 }
 
+// Watch kanalı ilk kurulduğunda bir başlangıç syncToken'ı gerekiyor — bunu almanın
+// yolu, zaman filtresi olmadan tam bir events.list turu yapıp son sayfadaki
+// nextSyncToken'ı okumak. Kişisel takvim ölçeğinde (binlerce etkinlik değil) tek
+// sayfa yeterli; maxResults 2500 (Calendar API'nin izin verdiği üst sınır).
+export async function fetchInitialSyncToken(accountIdentifier: string): Promise<string | null> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return null;
+
+  const params = new URLSearchParams({ singleEvents: "true", maxResults: "2500" });
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) {
+    console.error(`[calendar] fetchInitialSyncToken hatası: identifier=${accountIdentifier} status=${res.status}`);
+    return null;
+  }
+  const data = await res.json();
+  return data.nextSyncToken ?? null;
+}
+
+type EventsSinceResult =
+  | { ok: true; events: RawCalendarEvent[]; newSyncToken: string }
+  | { ok: false; reason: "sync_token_invalid" | "error" };
+
+// Calendar push webhook'unun artımlı yolu için: syncToken varken timeMin/timeMax
+// gönderilemiyor (Calendar API kısıtı), syncToken tek başına son senkronizasyondan
+// beri değişen (silinenler dahil) her şeyi döner. Gmail'in history.list'ine benzer.
+export async function fetchEventsSince(
+  accountIdentifier: string,
+  syncToken: string
+): Promise<EventsSinceResult> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return { ok: false, reason: "error" };
+
+  const params = new URLSearchParams({ syncToken, singleEvents: "true" });
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (res.status === 410) {
+    // syncToken artık geçersiz (çok eski/geçersiz) — çağıran taraf tam taramaya düşmeli.
+    return { ok: false, reason: "sync_token_invalid" };
+  }
+  if (!res.ok) {
+    console.error(`[calendar] fetchEventsSince hatası: identifier=${accountIdentifier} status=${res.status}`);
+    return { ok: false, reason: "error" };
+  }
+
+  const data = await res.json();
+  return {
+    ok: true,
+    events: (data.items ?? []) as RawCalendarEvent[],
+    newSyncToken: String(data.nextSyncToken ?? syncToken),
+  };
+}
+
 interface MeetingEvent {
   title: string;
   start: string;
