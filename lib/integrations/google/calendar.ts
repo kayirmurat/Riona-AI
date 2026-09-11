@@ -25,6 +25,47 @@ async function fetchEventsForAccount(identifier: string, maxResults: number): Pr
     .join("\n\n");
 }
 
+export interface RawCalendarEvent {
+  id: string;
+  summary?: string;
+  location?: string;
+  description?: string;
+  hangoutLink?: string;
+  htmlLink?: string;
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+  conferenceData?: { entryPoints?: { uri?: string }[] };
+}
+
+// classifyEmail benzeri ham veri ihtiyaçları için: fetchEventsForAccount chat'e
+// göstermek üzere formatlı string döndürüyor, toplantı linki taraması gibi
+// programatik kullanımlar için ham event JSON'ı gerekiyor.
+export async function fetchRawUpcomingEventItems(
+  accountIdentifier: string,
+  opts: { timeMinISO: string; timeMaxISO: string; maxResults: number }
+): Promise<RawCalendarEvent[]> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return [];
+
+  const params = new URLSearchParams({
+    timeMin: opts.timeMinISO,
+    timeMax: opts.timeMaxISO,
+    maxResults: String(opts.maxResults),
+    singleEvents: "true",
+    orderBy: "startTime",
+  });
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) {
+    console.error(`[calendar] fetchRawUpcomingEventItems hatası: identifier=${accountIdentifier} status=${res.status}`);
+    return [];
+  }
+  const data = await res.json();
+  return (data.items ?? []) as RawCalendarEvent[];
+}
+
 interface MeetingEvent {
   title: string;
   start: string;

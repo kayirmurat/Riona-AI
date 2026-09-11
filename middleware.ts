@@ -41,7 +41,8 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/gmail/watch") ||
-    pathname.startsWith("/api/webhooks/gmail")
+    pathname.startsWith("/api/webhooks/gmail") ||
+    pathname.startsWith("/api/meetings")
   ) {
     return NextResponse.next();
   }
