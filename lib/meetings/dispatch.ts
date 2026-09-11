@@ -1,6 +1,6 @@
 import { supabase } from "../db/supabase";
 
-const LEAD_WINDOW_MIN = 10;
+const LEAD_WINDOW_MIN = 30;
 const CATCH_UP_WINDOW_MIN = 5;
 const BOT_NAME = "Riona AI Notetaker";
 
