@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { supabase } from "../../../../../lib/db/supabase";
+import { summarizeMeeting } from "../../../../../lib/ai/meetingSummary";
 
 // Meeting BaaS Stage 2'de gönderilen webhook_url'e POST atıyor. Path'teki secret
 // (Gmail webhook'undaki gibi) ek bir engel; asıl doğrulama MEETING_BAAS_WEBHOOK_SECRET
@@ -79,17 +80,24 @@ export async function POST(req: Request, { params }: { params: { secret: string 
     const recordingUrl = body?.mp4 ?? body?.recording_url ?? body?.data?.mp4 ?? null;
     const speakers = body?.speakers ?? body?.data?.speakers ?? null;
 
+    // Transkript boşsa (bot toplantıya giremedi/konuşma yakalanamadı) özetleme
+    // atlanır — status 'transcribed' kalır, panelde "özet henüz oluşturulmadı"
+    // olarak görünür; boş içerikten uydurma bir özet üretmek yerine bu tercih edildi.
+    const summary = await summarizeMeeting(transcript);
+
     await supabase
       .from("meetings")
       .update({
         transcript,
         recording_url: recordingUrl,
         speakers,
-        status: "transcribed",
+        summary_tr: summary?.summary_tr ?? null,
+        summary_en: summary?.summary_en ?? null,
+        status: summary ? "completed" : "transcribed",
         updated_at: new Date().toISOString(),
       })
       .eq("id", meeting.id);
-    return NextResponse.json({ success: true, handled: "transcribed" });
+    return NextResponse.json({ success: true, handled: summary ? "completed" : "transcribed" });
   }
 
   // Diğer olay tipleri (örn. bot toplantıya katıldı) — sadece log, no-op.

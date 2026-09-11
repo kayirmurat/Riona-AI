@@ -20,6 +20,8 @@ async function buildSystemPrompt(): Promise<ChatMessage> {
   };
 }
 
+const MEETING_MENTION_KEYWORDS = ["toplantı", "meeting"];
+const SUMMARY_KEYWORDS = ["özet", "summar"];
 const BRIEFING_KEYWORDS = ["hatırlat", "brifing", "briefing", "özet", "bekleyen", "durum ne", "ne var", "bugün mail"];
 const EMAIL_KEYWORDS = ["mail", "e-posta", "eposta", "gmail", "gelen kutu", "inbox"];
 const CALENDAR_KEYWORDS = ["takvim", "calendar", "etkinlik", "toplantı", "randevu"];
@@ -27,6 +29,15 @@ const DRAFT_KEYWORDS = ["taslak", "draft"];
 
 function detectForcedTool(userMessage: string): string | null {
   const lower = userMessage.toLowerCase();
+  // "bu toplantıyı özetle" gibi mesajlar hem "özet" (BRIEFING_KEYWORDS) hem
+  // "toplantı" (CALENDAR_KEYWORDS) içerdiği için bu kontrol ikisinden de önce
+  // gelmeli, yoksa hiçbir zaman get_meeting_summary'ye ulaşılamaz.
+  if (
+    MEETING_MENTION_KEYWORDS.some((k) => lower.includes(k)) &&
+    SUMMARY_KEYWORDS.some((k) => lower.includes(k))
+  ) {
+    return "get_meeting_summary";
+  }
   if (BRIEFING_KEYWORDS.some((k) => lower.includes(k))) return "get_email_briefing";
   if (DRAFT_KEYWORDS.some((k) => lower.includes(k))) return "create_email_draft";
   if (EMAIL_KEYWORDS.some((k) => lower.includes(k))) return "get_recent_emails";
