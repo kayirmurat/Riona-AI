@@ -45,6 +45,35 @@ gösterir.
    `{"success":true,...}` dönerse kayıt tamamlanmış demektir. Bu kayıt kendiliğinden günlük olarak
    yenilenir (bkz. `vercel.json`), elle tekrar yapmana gerek yok.
 
+## Toplantı Botu Kurulumu (Stage 15)
+
+Bu adımlar Meeting BaaS'ın kendi sitesinde yapılır (Google Cloud'a gerek yok).
+`.env.example`'daki dört yeni değişkenin (`APP_BASE_URL`, `MEETING_BAAS_API_KEY`,
+`MEETING_BAAS_WEBHOOK_PATH_SECRET`, `MEETING_BAAS_WEBHOOK_SECRET`) nereden geldiğini gösterir.
+
+**⚠️ Gizlilik notu — mutlaka oku:** Bot, toplantıya "Riona AI Notetaker" adıyla, diğer
+katılımcılara **görünür bir katılımcı** olarak girer — gizli/sessiz bir kayıt değildir. Kaydettiğin
+toplantılara göre, diğer katılımcıları önceden bilgilendirmen yasal/etik açıdan gerekebilir
+(ülke ve toplantı türüne göre değişir).
+
+1. **Hesap aç**: auth.meetingbaas.com adresinden kaydol (ilk 8 kayıt saati ücretsiz).
+2. **API anahtarını al**: dashboard.meetingbaas.com → panelde API anahtarın görünür olacak
+   → bu değer `MEETING_BAAS_API_KEY`.
+3. **`MEETING_BAAS_WEBHOOK_PATH_SECRET` değerini kendin seç**: rastgele, uzun bir string
+   (Gmail kurulumundaki `GMAIL_PUSH_WEBHOOK_SECRET` ile aynı mantık) — sadece Vercel'e gireceksin,
+   Meeting BaaS tarafında ayrıca bir yere girmen gerekmiyor (bot isteğiyle birlikte otomatik gidiyor).
+4. **`MEETING_BAAS_WEBHOOK_SECRET` değerini panelden al**: dashboard.meetingbaas.com → webhook
+   ayarları ekranında imzalama (signing) secret'ı gösterilir — bu değer `MEETING_BAAS_WEBHOOK_SECRET`
+   (bir önceki maddedeki kendi seçtiğin secret'tan farklı, karıştırma).
+5. **`APP_BASE_URL`**: `https://riona-ai-tau.vercel.app` (sondaki `/` olmadan).
+6. **Vercel'e env değişkenlerini gir**: Settings → Environment Variables →
+   `APP_BASE_URL`, `MEETING_BAAS_API_KEY`, `MEETING_BAAS_WEBHOOK_PATH_SECRET`,
+   `MEETING_BAAS_WEBHOOK_SECRET` — Production ve Preview ikisi için de işaretli olsun.
+7. **GitHub Actions için `CRON_SECRET`'ı ekle** (Vercel Hobby planı sık cron'a izin vermediği için
+   bot gönderme işi GitHub Actions'ta çalışıyor): GitHub reponda Settings → Secrets and variables →
+   Actions → "New repository secret" → adı `CRON_SECRET`, değeri Vercel'deki `CRON_SECRET` ile
+   **birebir aynı**.
+
 ## Web Push Bildirimleri Kurulumu (Stage 14, Stage 5)
 
 Bunun için Google Cloud'a gerek yok — bildirim anahtarları (VAPID) kod tarafında zaten üretildi.
