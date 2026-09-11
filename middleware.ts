@@ -38,6 +38,10 @@ export async function middleware(req: NextRequest) {
 
   if (
     pathname.startsWith("/login") ||
+    // Google Search Console/Cloud Console domain doğrulama dosyaları
+    // (public/google*.html) — Google'ın kendi doğrulama tarayıcısı bunu
+    // çekerken login sayfasına yönlendirilirse doğrulama başarısız olur.
+    (pathname.startsWith("/google") && pathname.endsWith(".html")) ||
     pathname.startsWith("/api/auth/login") ||
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/gmail/watch") ||
