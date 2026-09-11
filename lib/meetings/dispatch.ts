@@ -88,8 +88,20 @@ async function callMeetingBaas(meetingUrl: string, webhookUrl: string): Promise<
     }),
   });
 
-  const data = await res.json().catch(() => null);
+  const rawText = await res.text();
+  const data = (() => {
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      return null;
+    }
+  })();
+
   if (!res.ok) {
+    // Meeting BaaS'ın gerçek hata gövdesini logla — sadece "HTTP 422" bilgisi
+    // hangi alanın reddedildiğini anlamaya yetmiyor (bot_image/recording_mode/
+    // speech_to_text gibi yeni eklenen alanlardan biri olabilir).
+    console.error(`[meetings/dispatch] Meeting BaaS hata gövdesi: status=${res.status} body=${rawText.slice(0, 1000)}`);
     return { ok: false, message: data?.message ?? `HTTP ${res.status}` };
   }
   return { ok: true, botId: data?.bot_id ?? data?.id };
