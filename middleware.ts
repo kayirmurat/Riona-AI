@@ -43,7 +43,8 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/api/gmail/watch") ||
     pathname.startsWith("/api/webhooks/gmail") ||
     pathname.startsWith("/api/webhooks/meeting-baas") ||
-    pathname.startsWith("/api/meetings")
+    pathname.startsWith("/api/meetings/scan") ||
+    pathname.startsWith("/api/meetings/dispatch")
   ) {
     return NextResponse.next();
   }
