@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { getValidAccessTokenFor, listGoogleAccounts } from "./tokens";
 
 interface GmailMessagePart {
@@ -146,9 +147,63 @@ export async function fetchRecentEmails(maxResults = 5, accountIdentifier?: stri
   return parts.join("\n\n");
 }
 
+// get_recent_emails'ten farkı: "son N mail" değil, Gmail'in kendi arama
+// sözdizimiyle (from:, subject:, after:, before: vb.) TÜM posta kutusunda
+// arama yapar — geçmişte ne kadar eski olursa olsun.
+async function searchEmailsForAccount(identifier: string, query: string, maxResults: number): Promise<string> {
+  const accessToken = await getValidAccessTokenFor(identifier);
+  if (!accessToken) return "Bu hesap bağlı değil.";
+
+  const listRes = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}&q=${encodeURIComponent(query)}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!listRes.ok) return "Arama yapılamadı.";
+  const listData = await listRes.json();
+  const ids: string[] = (listData.messages ?? []).map((m: any) => m.id);
+  if (ids.length === 0) return "Eşleşen mail bulunamadı.";
+
+  const summaries: string[] = [];
+  for (const id of ids) {
+    const msgRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const msgData = await msgRes.json();
+    const headers = msgData.payload?.headers ?? [];
+    const from = headers.find((h: any) => h.name === "From")?.value ?? "Bilinmiyor";
+    const subject = headers.find((h: any) => h.name === "Subject")?.value ?? "(konu yok)";
+    const date = headers.find((h: any) => h.name === "Date")?.value ?? "";
+    const snippet = msgData.snippet ?? "";
+    summaries.push(`Kimden: ${from}\nKonu: ${subject}\nTarih: ${date}\nÖzet: ${snippet}`);
+  }
+
+  return summaries.join("\n\n");
+}
+
+export async function searchEmails(query: string, maxResults = 10, accountIdentifier?: string): Promise<string> {
+  if (accountIdentifier) {
+    return searchEmailsForAccount(accountIdentifier, query, maxResults);
+  }
+  const accounts = await listGoogleAccounts();
+  if (accounts.length === 0) return "Hiçbir Gmail hesabı bağlı değil.";
+  const parts: string[] = [];
+  for (const acc of accounts) {
+    const text = await searchEmailsForAccount(acc.email, query, maxResults);
+    parts.push(`--- ${acc.label} (${acc.email}) ---\n${text}`);
+  }
+  return parts.join("\n\n");
+}
+
 function encodeSubject(subject: string): string {
   const base64Subject = Buffer.from(subject, "utf-8").toString("base64");
   return `=?UTF-8?B?${base64Subject}?=`;
+}
+
+export interface OutgoingAttachment {
+  filename: string;
+  mimeType: string;
+  dataBase64: string;
 }
 
 export interface ThreadContext {
@@ -156,6 +211,7 @@ export interface ThreadContext {
   inReplyTo?: string | null;
   cc?: string | null;
   bcc?: string | null;
+  attachments?: OutgoingAttachment[] | null;
 }
 
 // threadId tek başına yeterli değil — Gmail bir mesajı var olan bir zincire ancak
@@ -171,9 +227,41 @@ function buildEncodedMessage(to: string, subject: string, body: string, ctx?: Th
     headerLines.push(`In-Reply-To: ${ctx.inReplyTo}`);
     headerLines.push(`References: ${ctx.inReplyTo}`);
   }
-  headerLines.push("Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: base64", "");
 
-  const rawMessage = [...headerLines, Buffer.from(body, "utf-8").toString("base64")].join("\n");
+  const attachments = ctx?.attachments ?? [];
+  let rawMessage: string;
+
+  if (attachments.length > 0) {
+    // Ek varsa multipart/mixed'e geçiliyor: ilk parça düz metin gövde, sonraki
+    // parçalar her biri ayrı bir ek dosya (zaten base64 olarak geliyor, tekrar
+    // encode edilmiyor).
+    const boundary = `----=_Riona_${crypto.randomUUID()}`;
+    headerLines.push(`Content-Type: multipart/mixed; boundary="${boundary}"`, "");
+
+    const parts: string[] = [
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      Buffer.from(body, "utf-8").toString("base64"),
+    ];
+    for (const att of attachments) {
+      parts.push(
+        `--${boundary}`,
+        `Content-Type: ${att.mimeType || "application/octet-stream"}; name="${att.filename}"`,
+        "Content-Transfer-Encoding: base64",
+        `Content-Disposition: attachment; filename="${att.filename}"`,
+        "",
+        att.dataBase64
+      );
+    }
+    parts.push(`--${boundary}--`, "");
+
+    rawMessage = [...headerLines, ...parts].join("\n");
+  } else {
+    headerLines.push("Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: base64", "");
+    rawMessage = [...headerLines, Buffer.from(body, "utf-8").toString("base64")].join("\n");
+  }
 
   return Buffer.from(rawMessage)
     .toString("base64")
@@ -257,6 +345,18 @@ export async function markEmailRead(accountIdentifier: string, messageId: string
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ removeLabelIds: ["UNREAD"] }),
+  });
+  return res.ok;
+}
+
+export async function markEmailUnread(accountIdentifier: string, messageId: string): Promise<boolean> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return false;
+
+  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ addLabelIds: ["UNREAD"] }),
   });
   return res.ok;
 }
