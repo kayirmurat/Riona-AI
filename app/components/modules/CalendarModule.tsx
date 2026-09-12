@@ -25,8 +25,10 @@ function formatDate(iso: string | null): string {
 export default function CalendarModule() {
   const [events, setEvents] = useState<CalendarEventItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  async function loadEvents() {
+  async function loadEvents(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
     try {
       const res = await fetch("/api/calendar/events");
       if (res.status === 401) {
@@ -39,6 +41,7 @@ export default function CalendarModule() {
       console.error("Takvim etkinlikleri yüklenemedi:", e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -48,6 +51,16 @@ export default function CalendarModule() {
 
   return (
     <div>
+      <div className="mb-3 flex justify-end">
+        <button
+          onClick={() => loadEvents(true)}
+          disabled={refreshing}
+          className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken disabled:opacity-50"
+        >
+          {refreshing ? "Yenileniyor…" : "Yenile"}
+        </button>
+      </div>
+
       {loading && <p className="text-sm text-ink-muted">Yükleniyor…</p>}
       {!loading && events.length === 0 && (
         <p className="text-sm text-ink-muted">Yaklaşan 30 gün içinde etkinlik bulunamadı.</p>

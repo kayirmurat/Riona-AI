@@ -188,6 +188,72 @@ export async function createCalendarNote(
   return { ok: true, message: "Takvime eklendi." };
 }
 
+// Sohbette "şu toplantıyı sil/güncelle" dendiğinde etkinliği bulmak için —
+// takvim etkinlikleri bizim veritabanımızda saklanmıyor (Mail'in scanned_emails'i
+// gibi), her seferinde Google'dan canlı arama yapılıyor. Calendar API'nin
+// kendi `q` parametresi başlık/açıklama/yer/katılımcı üzerinde arama yapıyor.
+export async function findEventByTitle(
+  accountIdentifier: string,
+  titleContains: string
+): Promise<RawCalendarEvent | null> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return null;
+
+  const timeMin = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const timeMax = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
+  const params = new URLSearchParams({
+    timeMin,
+    timeMax,
+    singleEvents: "true",
+    orderBy: "startTime",
+    q: titleContains,
+    maxResults: "5",
+  });
+
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const items = (data.items ?? []) as RawCalendarEvent[];
+  return items[0] ?? null;
+}
+
+export async function updateCalendarEvent(
+  accountIdentifier: string,
+  eventId: string,
+  changes: { title?: string; start?: string; end?: string; location?: string; description?: string }
+): Promise<boolean> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return false;
+
+  const body: Record<string, unknown> = {};
+  if (changes.title) body.summary = changes.title;
+  if (changes.location) body.location = changes.location;
+  if (changes.description) body.description = changes.description;
+  if (changes.start) body.start = { dateTime: changes.start, timeZone: "America/New_York" };
+  if (changes.end) body.end = { dateTime: changes.end, timeZone: "America/New_York" };
+
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.ok;
+}
+
+export async function deleteCalendarEvent(accountIdentifier: string, eventId: string): Promise<boolean> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return false;
+
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  // 410 (Gone) etkinlik zaten silinmiş demektir — kullanıcı açısından yine de başarı.
+  return res.ok || res.status === 410;
+}
+
 export async function fetchUpcomingEvents(maxResults = 5, accountIdentifier?: string): Promise<string> {
   if (accountIdentifier) {
     return fetchEventsForAccount(accountIdentifier, maxResults);
