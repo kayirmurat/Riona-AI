@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import NotificationToggle from "./NotificationToggle";
 import { Logo } from "./Logo";
 import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
+import { modules } from "./modules/registry";
 
 interface Conversation {
   id: string;
@@ -27,13 +28,16 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   isOpen: boolean;
   onClose: () => void;
+  view: string;
+  onSelectView: (id: string) => void;
 }
 
-export default function Sidebar({ activeId, onSelect, isOpen, onClose }: SidebarProps) {
+export default function Sidebar({ activeId, onSelect, isOpen, onClose, view, onSelectView }: SidebarProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [pendingMailCount, setPendingMailCount] = useState(0);
 
   async function loadConversations() {
     try {
@@ -47,11 +51,23 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose }: Sidebar
     }
   }
 
+  async function loadPendingMailCount() {
+    try {
+      const res = await fetch("/api/scanned-emails/pending-count");
+      const data = await res.json();
+      setPendingMailCount(typeof data.count === "number" ? data.count : 0);
+    } catch (e) {
+      console.error("Bekleyen mail sayısı alınamadı:", e);
+    }
+  }
+
   useEffect(() => {
     loadConversations();
+    loadPendingMailCount();
   }, []);
 
   useRealtimeRefresh("conversations", loadConversations);
+  useRealtimeRefresh("scanned_emails", loadPendingMailCount);
 
   async function handleCreate() {
     const res = await fetch("/api/conversations", { method: "POST" });
@@ -136,7 +152,9 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose }: Sidebar
             <div
               key={conv.id}
               className={`group mb-1 flex items-center gap-1 rounded-lg px-2 py-2 text-sm ${
-                conv.id === activeId ? "bg-surface-sunken text-ink" : "text-ink-muted hover:bg-surface-sunken"
+                view === "chat" && conv.id === activeId
+                  ? "bg-surface-sunken text-ink"
+                  : "text-ink-muted hover:bg-surface-sunken"
               }`}
             >
               {editingId === conv.id ? (
@@ -186,6 +204,25 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose }: Sidebar
             </div>
           ))}
         </nav>
+
+        <div className="border-t border-border px-2 py-2">
+          {modules.map((mod) => (
+            <button
+              key={mod.id}
+              onClick={() => onSelectView(mod.id)}
+              className={`mb-1 flex w-full items-center justify-between rounded-lg px-2 py-2 text-sm ${
+                view === mod.id ? "bg-surface-sunken text-ink" : "text-ink-muted hover:bg-surface-sunken"
+              }`}
+            >
+              <span>{mod.title}</span>
+              {mod.id === "mail" && pendingMailCount > 0 && (
+                <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-xs font-medium text-white">
+                  {pendingMailCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
 
         <div className="border-t border-border p-3">
           <NotificationToggle />
