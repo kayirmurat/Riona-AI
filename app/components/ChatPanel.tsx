@@ -175,7 +175,13 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
 
       {voice.voiceMode && (
         <p className="border-t border-border bg-surface-sunken px-3 py-1.5 text-center text-xs text-ink-muted">
-          {voice.speaking ? "🔊 Riona konuşuyor…" : voice.listening ? "🎙️ Dinliyorum…" : "Sesli sohbet açık"}
+          {voice.errorMessage ??
+            (voice.speaking ? "🔊 Riona konuşuyor…" : voice.listening ? "🎙️ Dinliyorum…" : "Sesli sohbet açık")}
+        </p>
+      )}
+      {!voice.voiceMode && voice.errorMessage && (
+        <p className="border-t border-border bg-red-50 px-3 py-1.5 text-center text-xs text-red-700">
+          {voice.errorMessage}
         </p>
       )}
 

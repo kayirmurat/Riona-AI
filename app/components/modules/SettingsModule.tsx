@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import VoiceSettingsSection from "./VoiceSettingsSection";
 
 interface Account {
   email: string;
@@ -153,6 +154,8 @@ export default function SettingsModule() {
           </div>
         )}
       </div>
+
+      <VoiceSettingsSection />
     </div>
   );
 }
