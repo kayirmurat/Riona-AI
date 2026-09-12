@@ -108,11 +108,20 @@ export function useVoiceChat({ lang = "tr-TR", onTranscript, onVoiceMessage }: U
         if (voiceModeRef.current) startListening(true);
         return;
       }
+      // Riona hâlâ konuşuyorsa (TTS çalıyorsa) kullanıcı araya girmiş demektir
+      // — sesi hemen kesiyoruz (barge-in).
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel();
+        setSpeaking(false);
+      }
       const reply = await onVoiceMessageRef.current(transcript);
       if (voiceModeRef.current) {
-        speak(reply, () => {
-          if (voiceModeRef.current) startListening(true);
-        });
+        speak(reply);
+        // Cevap seslendirilirken AYNI ANDA dinlemeye devam ediliyor ki kullanıcı
+        // Riona konuşurken araya girip konuşabilsin. Not: mikrofon ve hoparlör
+        // aynı cihazdaysa (kulaklıksız) Riona kendi sesini duyup yanlışlıkla
+        // araya girilmiş sanabilir — düzgün barge-in için kulaklık önerilir.
+        startListening(true);
       }
     };
 

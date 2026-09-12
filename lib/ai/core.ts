@@ -22,9 +22,13 @@ function getCurrentDateContext(): string {
   return `Şu an: ${formatted} (kullanıcının saati, ABD Doğu/New York saat dilimi). Kullanıcı "bugün", "yarın", "bu hafta" gibi göreli zaman ifadeleri kullandığında hesabını bu gerçek tarihe göre yap.`;
 }
 
-async function buildSystemPrompt(): Promise<ChatMessage> {
+const VOICE_MODE_INSTRUCTION =
+  "\n\nŞu an SESLİ SOHBET modundasın — cevabın yüksek sesle okunacak. Kısa, doğal konuşma cümleleri kur; madde işaretli liste, numaralandırma veya markdown biçimlendirme KULLANMA (bunlar sesli okunduğunda anlamsız çıkar). Söylenecek en önemli şeyi 1-3 kısa cümlede ver.";
+
+async function buildSystemPrompt(voiceMode: boolean): Promise<ChatMessage> {
   const facts = await getRecentFacts();
-  const base = `${BASE_SYSTEM_PROMPT}\n\n${getCurrentDateContext()}`;
+  let base = `${BASE_SYSTEM_PROMPT}\n\n${getCurrentDateContext()}`;
+  if (voiceMode) base += VOICE_MODE_INSTRUCTION;
   if (facts.length === 0) return { role: "system", content: base };
 
   const factsList = facts.map((f) => `- ${f}`).join("\n");
@@ -92,7 +96,11 @@ const REJECT_WORDS = ["iptal", "vazgeç", "yapma"];
 // sonsuz döngüyü önlemek için makul bir üst sınır.
 const MAX_TOOL_STEPS = 5;
 
-export async function askRiona(conversationId: string, userMessage: string): Promise<string> {
+export async function askRiona(
+  conversationId: string,
+  userMessage: string,
+  options?: { voiceMode?: boolean }
+): Promise<string> {
   await touchOrCreateConversation(conversationId, userMessage);
   const toolContext = { conversationId };
 
@@ -116,7 +124,7 @@ export async function askRiona(conversationId: string, userMessage: string): Pro
 
   const provider = getProvider();
   const history = await getHistory(conversationId);
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt(Boolean(options?.voiceMode));
   const messages: ChatMessage[] = [systemPrompt, ...history, { role: "user", content: userMessage }];
 
   const toolDefs = availableTools.map((t) => t.definition);
