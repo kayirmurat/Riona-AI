@@ -30,12 +30,21 @@ function isSpeechBusy(): boolean {
 // gecikme yerine gerçekten "speaking=false" olana kadar yoklayarak bekleniyor.
 // Mikrofon bu doğrulama olmadan açılırsa, Riona'nın kendi sesinin son kısmını
 // yakalayıp kendi cevabına kendi cevap verdiği bir geri besleme döngüsü oluşuyordu.
+//
+// AMA Chrome'un ters bir hatası daha var: speechSynthesis.speaking bazen
+// gerçekte konuşma bittiği halde true'da TAKILI kalıyor — bu yüzden sonsuza
+// kadar beklemek yerine MAX_WAIT_MS sonra "artık bitmiş say" diye vazgeçiliyor,
+// aksi halde sohbet kalıcı olarak tıkanıyordu (canlı testte gözlemlendi).
+const WAIT_POLL_MS = 250;
+const MAX_WAIT_MS = 8000;
+
 function waitUntilSpeechFullyStopped(callback: () => void) {
+  const startedAt = Date.now();
   const check = () => {
-    if (!isSpeechBusy()) {
+    if (!isSpeechBusy() || Date.now() - startedAt > MAX_WAIT_MS) {
       callback();
     } else {
-      setTimeout(check, 250);
+      setTimeout(check, WAIT_POLL_MS);
     }
   };
   setTimeout(check, 400);
@@ -80,15 +89,24 @@ export function useVoiceChat({ lang = "tr-TR", onTranscript, onVoiceMessage }: U
       utterance.lang = lang;
       applyVoiceSettings(utterance, settings);
       setSpeaking(true);
-      utterance.onend = () => {
+
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
         setSpeaking(false);
         onEnd?.();
       };
-      utterance.onerror = () => {
-        setSpeaking(false);
-        onEnd?.();
-      };
+      utterance.onend = finish;
+      utterance.onerror = finish;
       window.speechSynthesis.speak(utterance);
+
+      // Chrome'da uzun metinlerde onend/onerror HİÇ tetiklenmeyebiliyor (bilinen
+      // bir motor hatası) — bu durumda sohbet kalıcı olarak "Riona konuşuyor"
+      // sanılıp donuyordu. Metin uzunluğuna göre kabaca bir üst sınır sonra
+      // hâlâ bitmemişse manuel olarak bitmiş sayılıyor.
+      const estimatedMs = Math.max(4000, text.length * 90);
+      setTimeout(finish, estimatedMs);
     };
     // Chrome'da cancel() hemen ardından speak() çağrılırsa bazen hiç ses
     // çıkmıyor (bilinen bir motor hatası) — sadece gerçekten konuşuyorsa iptal
