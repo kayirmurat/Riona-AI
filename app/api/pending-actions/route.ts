@@ -26,11 +26,13 @@ export async function POST(req: NextRequest) {
   if (action === "approve_draft" || action === "approve_send" || action === "approve") {
     const finalArgs = overrides ? { ...pending.arguments, ...overrides } : pending.arguments;
 
+    const threadCtx = { threadId: finalArgs.thread_id, inReplyTo: finalArgs.in_reply_to };
+
     let result: string;
     if (pending.tool_name === "create_email_draft" && action === "approve_send") {
-      result = await sendEmail(finalArgs.account, finalArgs.to, finalArgs.subject, finalArgs.body);
+      result = await sendEmail(finalArgs.account, finalArgs.to, finalArgs.subject, finalArgs.body, threadCtx);
     } else if (pending.tool_name === "create_email_draft") {
-      result = await createEmailDraft(finalArgs.account, finalArgs.to, finalArgs.subject, finalArgs.body);
+      result = await createEmailDraft(finalArgs.account, finalArgs.to, finalArgs.subject, finalArgs.body, threadCtx);
     } else {
       const tool = getToolByName(pending.tool_name);
       result = tool ? await tool.execute(finalArgs) : "Araç bulunamadı.";

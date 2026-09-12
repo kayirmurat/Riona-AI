@@ -147,6 +147,8 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
   const subject = headers.find((h: any) => h.name === "Subject")?.value ?? "";
   const snippet = msgData.snippet ?? "";
   const bodyText = extractEmailBody(msgData.payload);
+  const messageIdHeader = headers.find((h: any) => h.name === "Message-ID" || h.name === "Message-Id")?.value ?? null;
+  const gmailThreadId: string | null = msgData.threadId ?? null;
 
   if (NO_REPLY_PATTERN.test(from)) {
     // Aynı message id'nin iki tetikleyiciden (cron + webhook) neredeyse aynı anda
@@ -182,7 +184,14 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
     pendingActionId = await createPendingAction(
       "system-automation",
       "create_email_draft",
-      { to: replyTo, subject: draftSubject, body: draftBody, account: account.label },
+      {
+        to: replyTo,
+        subject: draftSubject,
+        body: draftBody,
+        account: account.label,
+        thread_id: gmailThreadId,
+        in_reply_to: messageIdHeader,
+      },
       `"${subject}" konulu maile öneri cevap (${account.label})`
     );
 
