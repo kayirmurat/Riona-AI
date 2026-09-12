@@ -26,7 +26,12 @@ export async function POST(req: NextRequest) {
   if (action === "approve_draft" || action === "approve_send" || action === "approve") {
     const finalArgs = overrides ? { ...pending.arguments, ...overrides } : pending.arguments;
 
-    const threadCtx = { threadId: finalArgs.thread_id, inReplyTo: finalArgs.in_reply_to };
+    const threadCtx = {
+      threadId: finalArgs.thread_id,
+      inReplyTo: finalArgs.in_reply_to,
+      cc: finalArgs.cc,
+      bcc: finalArgs.bcc,
+    };
 
     let result: string;
     if (pending.tool_name === "create_email_draft" && action === "approve_send") {

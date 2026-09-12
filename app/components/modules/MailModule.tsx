@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRealtimeRefresh } from "../../hooks/useRealtimeRefresh";
 
+interface EmailAttachment {
+  filename: string;
+  mimeType: string;
+  attachmentId: string;
+  size: number;
+}
+
 interface ScannedEmail {
   id: string;
   account_label: string;
@@ -10,12 +17,20 @@ interface ScannedEmail {
   subject: string;
   snippet: string;
   body_text: string | null;
+  cc: string | null;
+  attachments: EmailAttachment[] | null;
   needs_reply: boolean;
   draft_subject: string | null;
   draft_body: string | null;
   pending_action_id: string | null;
   status: string;
   category: string | null;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 type Tab = "pending" | "info" | "history";
@@ -31,7 +46,7 @@ const TERMINAL_STATUSES = new Set(["executed", "rejected", "archived", "trashed"
 
 export default function MailModule() {
   const [scannedEmails, setScannedEmails] = useState<ScannedEmail[]>([]);
-  const [edits, setEdits] = useState<Record<string, { subject: string; body: string }>>({});
+  const [edits, setEdits] = useState<Record<string, { subject: string; body: string; cc: string; bcc: string }>>({});
   const [tab, setTab] = useState<Tab>("pending");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -46,10 +61,15 @@ export default function MailModule() {
       const data = await res.json();
       const emails: ScannedEmail[] = data.emails ?? [];
       setScannedEmails(emails);
-      const initialEdits: Record<string, { subject: string; body: string }> = {};
+      const initialEdits: Record<string, { subject: string; body: string; cc: string; bcc: string }> = {};
       emails.forEach((e) => {
         if (e.needs_reply && e.status === "pending") {
-          initialEdits[e.id] = { subject: e.draft_subject ?? "", body: e.draft_body ?? "" };
+          initialEdits[e.id] = {
+            subject: e.draft_subject ?? "",
+            body: e.draft_body ?? "",
+            cc: e.cc ?? "",
+            bcc: "",
+          };
         }
       });
       setEdits((prev) => ({ ...initialEdits, ...prev }));
@@ -78,7 +98,12 @@ export default function MailModule() {
         action,
         overrides:
           action !== "reject" && editedValues
-            ? { subject: editedValues.subject, body: editedValues.body }
+            ? {
+                subject: editedValues.subject,
+                body: editedValues.body,
+                cc: editedValues.cc || null,
+                bcc: editedValues.bcc || null,
+              }
             : undefined,
       }),
     });
@@ -208,6 +233,20 @@ export default function MailModule() {
               </div>
             )}
 
+            {e.attachments && e.attachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {e.attachments.map((a) => (
+                  <a
+                    key={a.attachmentId}
+                    href={`/api/scanned-emails/attachments?emailId=${e.id}&attachmentId=${a.attachmentId}`}
+                    className="rounded-md border border-border bg-surface-sunken px-2 py-1 text-xs text-ink hover:bg-surface"
+                  >
+                    📎 {a.filename} ({formatFileSize(a.size)})
+                  </a>
+                ))}
+              </div>
+            )}
+
             {e.status === "executed" || e.status === "rejected" ? (
               e.draft_body && (
                 <div className="rounded-md border border-border bg-surface-sunken p-2">
@@ -226,6 +265,23 @@ export default function MailModule() {
                     setEdits((prev) => ({ ...prev, [e.id]: { ...prev[e.id], subject: ev.target.value } }))
                   }
                   className="mb-1 w-full rounded border border-border px-2 py-1 text-sm"
+                  placeholder="Konu"
+                />
+                <input
+                  value={edits[e.id]?.cc ?? ""}
+                  onChange={(ev) =>
+                    setEdits((prev) => ({ ...prev, [e.id]: { ...prev[e.id], cc: ev.target.value } }))
+                  }
+                  className="mb-1 w-full rounded border border-border px-2 py-1 text-sm"
+                  placeholder="Cc (opsiyonel)"
+                />
+                <input
+                  value={edits[e.id]?.bcc ?? ""}
+                  onChange={(ev) =>
+                    setEdits((prev) => ({ ...prev, [e.id]: { ...prev[e.id], bcc: ev.target.value } }))
+                  }
+                  className="mb-1 w-full rounded border border-border px-2 py-1 text-sm"
+                  placeholder="Bcc (opsiyonel)"
                 />
                 <textarea
                   value={edits[e.id]?.body ?? ""}
