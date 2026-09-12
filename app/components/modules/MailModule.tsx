@@ -10,6 +10,35 @@ interface EmailAttachment {
   size: number;
 }
 
+interface ComposedAttachment {
+  filename: string;
+  mimeType: string;
+  dataBase64: string;
+  size: number;
+}
+
+interface DraftEdit {
+  subject: string;
+  body: string;
+  cc: string;
+  bcc: string;
+  attachments: ComposedAttachment[];
+}
+
+const MAX_ATTACHMENTS_TOTAL_BYTES = 3 * 1024 * 1024;
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 interface ScannedEmail {
   id: string;
   account_label: string;
@@ -46,7 +75,7 @@ const TERMINAL_STATUSES = new Set(["executed", "rejected", "archived", "trashed"
 
 export default function MailModule() {
   const [scannedEmails, setScannedEmails] = useState<ScannedEmail[]>([]);
-  const [edits, setEdits] = useState<Record<string, { subject: string; body: string; cc: string; bcc: string }>>({});
+  const [edits, setEdits] = useState<Record<string, DraftEdit>>({});
   const [tab, setTab] = useState<Tab>("pending");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -58,6 +87,8 @@ export default function MailModule() {
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
   const [refineInstructions, setRefineInstructions] = useState<Record<string, string>>({});
   const [refiningFor, setRefiningFor] = useState<Record<string, boolean>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [attachmentErrors, setAttachmentErrors] = useState<Record<string, string>>({});
 
   async function loadScannedEmails() {
     try {
@@ -69,7 +100,7 @@ export default function MailModule() {
       const data = await res.json();
       const emails: ScannedEmail[] = data.emails ?? [];
       setScannedEmails(emails);
-      const initialEdits: Record<string, { subject: string; body: string; cc: string; bcc: string }> = {};
+      const initialEdits: Record<string, DraftEdit> = {};
       emails.forEach((e) => {
         if (e.needs_reply && e.status === "pending") {
           initialEdits[e.id] = {
@@ -77,6 +108,7 @@ export default function MailModule() {
             body: e.draft_body ?? "",
             cc: e.cc ?? "",
             bcc: "",
+            attachments: [],
           };
         }
       });
@@ -102,7 +134,7 @@ export default function MailModule() {
       const results: ScannedEmail[] = data.emails ?? [];
       setSearchResults(results);
       setSearchActive(true);
-      const newEdits: Record<string, { subject: string; body: string; cc: string; bcc: string }> = {};
+      const newEdits: Record<string, DraftEdit> = {};
       results.forEach((e) => {
         if (e.needs_reply && e.status === "pending") {
           newEdits[e.id] = {
@@ -110,6 +142,7 @@ export default function MailModule() {
             body: e.draft_body ?? "",
             cc: e.cc ?? "",
             bcc: "",
+            attachments: [],
           };
         }
       });
@@ -193,7 +226,7 @@ export default function MailModule() {
     emailId: string
   ) {
     const editedValues = edits[emailId];
-    await fetch("/api/pending-actions", {
+    const res = await fetch("/api/pending-actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -206,19 +239,106 @@ export default function MailModule() {
                 body: editedValues.body,
                 cc: editedValues.cc || null,
                 bcc: editedValues.bcc || null,
+                attachments: editedValues.attachments.map(({ filename, mimeType, dataBase64 }) => ({
+                  filename,
+                  mimeType,
+                  dataBase64,
+                })),
               }
             : undefined,
       }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setAttachmentErrors((prev) => ({ ...prev, [emailId]: data.error ?? "İşlem başarısız." }));
+      return;
+    }
     refreshAfterAction();
   }
 
-  async function handleQuickAction(id: string, action: "archive" | "trash" | "mark_read") {
+  async function handleQuickAction(id: string, action: "archive" | "trash" | "mark_read" | "mark_unread") {
     await fetch("/api/scanned-emails/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, action }),
     });
+    refreshAfterAction();
+  }
+
+  async function bulkAction(action: "archive" | "trash" | "mark_read" | "mark_unread") {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    await fetch("/api/scanned-emails/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, action }),
+    });
+    setSelectedIds(new Set());
+    refreshAfterAction();
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleFileSelect(id: string, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setAttachmentErrors((prev) => ({ ...prev, [id]: "" }));
+    const current = edits[id]?.attachments ?? [];
+    let totalBytes = current.reduce((sum, a) => sum + a.size, 0);
+    const newAttachments: ComposedAttachment[] = [];
+
+    for (const file of Array.from(files)) {
+      if (totalBytes + file.size > MAX_ATTACHMENTS_TOTAL_BYTES) {
+        setAttachmentErrors((prev) => ({
+          ...prev,
+          [id]: `Toplam ek boyutu sınırını (3MB) aşıyor, "${file.name}" eklenmedi.`,
+        }));
+        continue;
+      }
+      const dataBase64 = await fileToBase64(file);
+      newAttachments.push({ filename: file.name, mimeType: file.type || "application/octet-stream", dataBase64, size: file.size });
+      totalBytes += file.size;
+    }
+
+    setEdits((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], attachments: [...(prev[id]?.attachments ?? []), ...newAttachments] },
+    }));
+  }
+
+  function removeAttachment(id: string, index: number) {
+    setEdits((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], attachments: (prev[id]?.attachments ?? []).filter((_, i) => i !== index) },
+    }));
+  }
+
+  async function renameCategory(oldCategory: string) {
+    const newCategory = window.prompt(`"${oldCategory}" kategorisini yeniden adlandır:`, oldCategory);
+    if (!newCategory || !newCategory.trim() || newCategory.trim() === oldCategory) return;
+    await fetch("/api/scanned-emails/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oldCategory, newCategory: newCategory.trim() }),
+    });
+    if (selectedCategory === oldCategory) setSelectedCategory(newCategory.trim());
+    refreshAfterAction();
+  }
+
+  async function deleteCategory(oldCategory: string) {
+    if (!confirm(`"${oldCategory}" kategorisini kaldırmak istediğine emin misin? Bu kategorideki mailler kategorisiz kalacak.`)) return;
+    await fetch("/api/scanned-emails/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ oldCategory, newCategory: null }),
+    });
+    if (selectedCategory === oldCategory) setSelectedCategory(null);
     refreshAfterAction();
   }
 
@@ -314,17 +434,32 @@ export default function MailModule() {
             Tümü
           </button>
           {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`rounded-full border px-2 py-0.5 text-xs transition ${
-                selectedCategory === cat
-                  ? "border-accent bg-accent text-white"
-                  : "border-border text-ink-muted hover:bg-surface-sunken"
-              }`}
-            >
-              {cat}
-            </button>
+            <div key={cat} className="flex items-center gap-0.5">
+              <button
+                onClick={() => setSelectedCategory(cat)}
+                className={`rounded-full border px-2 py-0.5 text-xs transition ${
+                  selectedCategory === cat
+                    ? "border-accent bg-accent text-white"
+                    : "border-border text-ink-muted hover:bg-surface-sunken"
+                }`}
+              >
+                {cat}
+              </button>
+              <button
+                onClick={() => renameCategory(cat)}
+                title="Yeniden adlandır"
+                className="text-xs text-ink-muted hover:text-ink"
+              >
+                ✎
+              </button>
+              <button
+                onClick={() => deleteCategory(cat)}
+                title="Kategoriyi kaldır"
+                className="text-xs text-ink-muted hover:text-red-600"
+              >
+                ×
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -341,11 +476,73 @@ export default function MailModule() {
         </p>
       )}
 
+      {visibleEmails.length > 0 && (
+        <div className="mb-2 flex items-center gap-2 text-xs text-ink-muted">
+          <input
+            type="checkbox"
+            checked={visibleEmails.every((e) => selectedIds.has(e.id))}
+            onChange={(ev) => {
+              if (ev.target.checked) {
+                setSelectedIds((prev) => new Set([...prev, ...visibleEmails.map((e) => e.id)]));
+              } else {
+                const visibleIdSet = new Set(visibleEmails.map((e) => e.id));
+                setSelectedIds((prev) => new Set([...prev].filter((id) => !visibleIdSet.has(id))));
+              }
+            }}
+          />
+          <span>Tümünü seç</span>
+        </div>
+      )}
+
+      {selectedIds.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent bg-accent/5 p-2 text-xs">
+          <span className="font-medium text-ink">{selectedIds.size} seçili</span>
+          <button
+            onClick={() => bulkAction("mark_read")}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-ink-muted hover:bg-surface-sunken"
+          >
+            Okundu İşaretle
+          </button>
+          <button
+            onClick={() => bulkAction("mark_unread")}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-ink-muted hover:bg-surface-sunken"
+          >
+            Okunmadı İşaretle
+          </button>
+          <button
+            onClick={() => bulkAction("archive")}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-ink-muted hover:bg-surface-sunken"
+          >
+            Arşivle
+          </button>
+          <button
+            onClick={() => bulkAction("trash")}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-ink-muted hover:bg-surface-sunken"
+          >
+            Sil
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-ink-muted hover:bg-surface-sunken"
+          >
+            Temizle
+          </button>
+        </div>
+      )}
+
       <div className="space-y-3">
         {visibleEmails.map((e) => (
           <div key={e.id} className="rounded-lg border border-border bg-surface p-3 text-sm">
             <div className="flex items-start justify-between gap-2">
-              <p className="font-medium text-ink">{e.subject || "(konu yok)"}</p>
+              <div className="flex min-w-0 items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(e.id)}
+                  onChange={() => toggleSelect(e.id)}
+                  className="mt-1 shrink-0"
+                />
+                <p className="font-medium text-ink">{e.subject || "(konu yok)"}</p>
+              </div>
               <div className="flex shrink-0 gap-1">
                 {STATUS_LABELS[e.status] && (
                   <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-muted">
@@ -430,6 +627,25 @@ export default function MailModule() {
                   className="mb-1 w-full rounded border border-border px-2 py-1 text-sm"
                   placeholder="Bcc (opsiyonel)"
                 />
+                <input
+                  type="file"
+                  multiple
+                  onChange={(ev) => handleFileSelect(e.id, ev.target.files)}
+                  className="mb-1 w-full text-xs"
+                />
+                {(edits[e.id]?.attachments?.length ?? 0) > 0 && (
+                  <div className="mb-1 flex flex-wrap gap-1">
+                    {edits[e.id].attachments.map((a, idx) => (
+                      <span key={idx} className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-muted">
+                        {a.filename} ({formatFileSize(a.size)})
+                        <button onClick={() => removeAttachment(e.id, idx)} className="ml-1 text-red-600">
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {attachmentErrors[e.id] && <p className="mb-1 text-xs text-red-600">{attachmentErrors[e.id]}</p>}
                 <textarea
                   value={edits[e.id]?.body ?? ""}
                   onChange={(ev) =>
@@ -497,6 +713,12 @@ export default function MailModule() {
                 className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink-muted hover:bg-surface-sunken"
               >
                 Okundu İşaretle
+              </button>
+              <button
+                onClick={() => handleQuickAction(e.id, "mark_unread")}
+                className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink-muted hover:bg-surface-sunken"
+              >
+                Okunmadı İşaretle
               </button>
               <button
                 onClick={() => handleQuickAction(e.id, "archive")}

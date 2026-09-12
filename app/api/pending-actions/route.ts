@@ -6,6 +6,11 @@ import { createEmailDraft, sendEmail } from "../../../lib/integrations/google/gm
 
 export const dynamic = "force-dynamic";
 
+// Gerçek ek boyutu, base64 kodlamasıyla ~%33 büyüyor; Vercel'in serverless
+// fonksiyon istek boyutu sınırı (~4.5MB) aşılmasın diye kodlanmış ek verisi
+// burada 4MB ile sınırlanıyor (ham dosya boyutu bunun biraz altında kalır).
+const MAX_ATTACHMENTS_BASE64_BYTES = 4 * 1024 * 1024;
+
 export async function GET() {
   const { data, error } = await supabase
     .from("pending_actions")
@@ -26,11 +31,22 @@ export async function POST(req: NextRequest) {
   if (action === "approve_draft" || action === "approve_send" || action === "approve") {
     const finalArgs = overrides ? { ...pending.arguments, ...overrides } : pending.arguments;
 
+    if (Array.isArray(finalArgs.attachments)) {
+      const totalBytes = finalArgs.attachments.reduce(
+        (sum: number, a: any) => sum + (typeof a?.dataBase64 === "string" ? a.dataBase64.length : 0),
+        0
+      );
+      if (totalBytes > MAX_ATTACHMENTS_BASE64_BYTES) {
+        return NextResponse.json({ error: "Ek boyutu sınırı (4MB) aşılıyor." }, { status: 400 });
+      }
+    }
+
     const threadCtx = {
       threadId: finalArgs.thread_id,
       inReplyTo: finalArgs.in_reply_to,
       cc: finalArgs.cc,
       bcc: finalArgs.bcc,
+      attachments: finalArgs.attachments,
     };
 
     let result: string;
