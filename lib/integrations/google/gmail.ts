@@ -99,15 +99,24 @@ function encodeSubject(subject: string): string {
   return `=?UTF-8?B?${base64Subject}?=`;
 }
 
-function buildEncodedMessage(to: string, subject: string, body: string): string {
-  const rawMessage = [
-    `To: ${to}`,
-    `Subject: ${encodeSubject(subject)}`,
-    "Content-Type: text/plain; charset=utf-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    Buffer.from(body, "utf-8").toString("base64"),
-  ].join("\n");
+export interface ThreadContext {
+  threadId?: string | null;
+  inReplyTo?: string | null;
+}
+
+// threadId tek başına yeterli değil — Gmail bir mesajı var olan bir zincire ancak
+// In-Reply-To/References header'ları o zincirdeki bir mesajın Message-ID'sine
+// eşleştiğinde ekliyor. İkisi birlikte verilmezse cevap, alıcının kutusunda
+// orijinal yazışmadan ayrı, yeni bir konuşma olarak görünüyordu.
+function buildEncodedMessage(to: string, subject: string, body: string, ctx?: ThreadContext): string {
+  const headerLines = [`To: ${to}`, `Subject: ${encodeSubject(subject)}`];
+  if (ctx?.inReplyTo) {
+    headerLines.push(`In-Reply-To: ${ctx.inReplyTo}`);
+    headerLines.push(`References: ${ctx.inReplyTo}`);
+  }
+  headerLines.push("Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: base64", "");
+
+  const rawMessage = [...headerLines, Buffer.from(body, "utf-8").toString("base64")].join("\n");
 
   return Buffer.from(rawMessage)
     .toString("base64")
@@ -120,33 +129,40 @@ export async function createEmailDraft(
   accountIdentifier: string,
   to: string,
   subject: string,
-  body: string
+  body: string,
+  ctx?: ThreadContext
 ): Promise<string> {
   const accessToken = await getValidAccessTokenFor(accountIdentifier);
   if (!accessToken) return "Bu hesap bağlı değil.";
 
-  const encodedMessage = buildEncodedMessage(to, subject, body);
+  const encodedMessage = buildEncodedMessage(to, subject, body, ctx);
 
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ message: { raw: encodedMessage } }),
+    body: JSON.stringify({ message: { raw: encodedMessage, threadId: ctx?.threadId ?? undefined } }),
   });
 
   if (!res.ok) return "Taslak oluşturulamadı.";
   return "Taslak başarıyla Gmail'de oluşturuldu (Taslaklar klasörüne bak).";
 }
 
-export async function sendEmail(accountIdentifier: string, to: string, subject: string, body: string): Promise<string> {
+export async function sendEmail(
+  accountIdentifier: string,
+  to: string,
+  subject: string,
+  body: string,
+  ctx?: ThreadContext
+): Promise<string> {
   const accessToken = await getValidAccessTokenFor(accountIdentifier);
   if (!accessToken) return "Bu hesap bağlı değil.";
 
-  const encodedMessage = buildEncodedMessage(to, subject, body);
+  const encodedMessage = buildEncodedMessage(to, subject, body, ctx);
 
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ raw: encodedMessage }),
+    body: JSON.stringify({ raw: encodedMessage, threadId: ctx?.threadId ?? undefined }),
   });
 
   if (!res.ok) return "Mail gönderilemedi.";
