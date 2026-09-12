@@ -2,7 +2,10 @@ import { supabase } from "../db/supabase";
 import { getProvider } from "./provider";
 import { createPendingAction } from "./approval";
 import { createCalendarNote } from "../integrations/google/calendar";
+import { extractEmailBody } from "../integrations/google/gmail";
 import { sendPushToAll } from "../push/sendPush";
+
+const MAX_BODY_CHARS_FOR_AI = 6000;
 
 const NO_REPLY_PATTERN = /no-?reply|notification|noreply/i;
 const AUTO_NOTIFICATION_CATEGORY = "Otomatik Bildirim";
@@ -47,8 +50,11 @@ async function getExistingCategories(): Promise<string[]> {
   return unique.slice(0, MAX_EXISTING_CATEGORIES);
 }
 
-export async function classifyEmail(from: string, subject: string, snippet: string): Promise<Classification> {
+export async function classifyEmail(from: string, subject: string, snippet: string, body?: string): Promise<Classification> {
   const currentYear = new Date().getFullYear();
+  // Gmail'in snippet'i sadece kısa bir önizleme — tam gövde varsa onu kullanıyoruz,
+  // taslak cevabın gerçek içeriğe göre yazılabilmesi için.
+  const content = body && body.trim() ? body.trim().slice(0, MAX_BODY_CHARS_FOR_AI) : snippet;
   const existingCategories = await getExistingCategories();
   const categoriesHint =
     existingCategories.length > 0
@@ -72,7 +78,7 @@ Kurallar:
 - Zamanı makul şekilde tahmin edemiyorsan is_meeting false yap.
 - category: e-postanın konusuna en uygun KISA (1-3 kelime) bir kategori adı (örn. "Faturalandırma", "Franchise Operasyonları", "Randevu/Toplantı", "Kişisel"). Sabit bir liste yok, içeriğe göre sen üret. ${categoriesHint}`,
         },
-        { role: "user", content: `Kimden: ${from}\nKonu: ${subject}\nÖzet: ${snippet}` },
+        { role: "user", content: `Kimden: ${from}\nKonu: ${subject}\nİçerik: ${content}` },
       ],
       undefined,
       undefined,
@@ -140,6 +146,7 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
   const from = headers.find((h: any) => h.name === "From")?.value ?? "";
   const subject = headers.find((h: any) => h.name === "Subject")?.value ?? "";
   const snippet = msgData.snippet ?? "";
+  const bodyText = extractEmailBody(msgData.payload);
 
   if (NO_REPLY_PATTERN.test(from)) {
     // Aynı message id'nin iki tetikleyiciden (cron + webhook) neredeyse aynı anda
@@ -152,6 +159,7 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
       from_address: from,
       subject,
       snippet,
+      body_text: bodyText || null,
       needs_reply: false,
       status: "info",
       category: AUTO_NOTIFICATION_CATEGORY,
@@ -160,7 +168,7 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
     return "inserted";
   }
 
-  const classification = await classifyEmail(from, subject, snippet);
+  const classification = await classifyEmail(from, subject, snippet, bodyText);
 
   let pendingActionId: string | null = null;
   let draftSubject: string | null = null;
@@ -206,6 +214,7 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
     from_address: from,
     subject,
     snippet,
+    body_text: bodyText || null,
     needs_reply: classification.needs_reply,
     draft_subject: draftSubject,
     draft_body: draftBody,

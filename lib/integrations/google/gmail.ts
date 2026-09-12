@@ -1,5 +1,57 @@
 import { getValidAccessTokenFor, listGoogleAccounts } from "./tokens";
 
+interface GmailMessagePart {
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: GmailMessagePart[];
+}
+
+function decodeBase64Url(data: string): string {
+  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function findBodyPart(part: GmailMessagePart, mimeType: string): string | null {
+  if (part.mimeType === mimeType && part.body?.data) return decodeBase64Url(part.body.data);
+  for (const child of part.parts ?? []) {
+    const found = findBodyPart(child, mimeType);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Gmail'in "snippet" alanı sadece kısa bir önizleme (~100-200 karakter) —
+// hem AI sınıflandırmasının hem panelin gerçek mail içeriğini görebilmesi
+// için tam gövdeyi ayrıştırıyoruz. text/plain varsa onu tercih ediyoruz
+// (HTML'den ayrıştırma gürültülü olabilir), yoksa HTML'i basitçe düz metne
+// çeviriyoruz.
+export function extractEmailBody(payload: unknown): string {
+  const p = payload as GmailMessagePart | undefined;
+  if (!p) return "";
+  const plain = findBodyPart(p, "text/plain");
+  if (plain) return plain.trim();
+  const html = findBodyPart(p, "text/html");
+  if (html) return stripHtml(html);
+  if (p.body?.data) return decodeBase64Url(p.body.data).trim();
+  return "";
+}
+
 async function fetchEmailsForAccount(identifier: string, maxResults: number): Promise<string> {
   const accessToken = await getValidAccessTokenFor(identifier);
   if (!accessToken) return "Bu hesap bağlı değil.";
