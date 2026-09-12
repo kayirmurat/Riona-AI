@@ -47,7 +47,31 @@ function waitUntilSpeechFullyStopped(callback: () => void) {
       setTimeout(check, WAIT_POLL_MS);
     }
   };
-  setTimeout(check, 400);
+  // Oda yankısı/hoparlör kuyruğu, API "bitti" dese bile fiziksel olarak biraz
+  // daha sürebiliyor — ilk kontrolden önce biraz daha pay bırakılıyor.
+  setTimeout(check, 900);
+}
+
+function normalizeForCompare(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .trim();
+}
+
+// Zamanlama korumaları (isSpeechBusy kontrolleri) her durumu yakalayamıyor —
+// oda akustiği/donanım gecikmesi API'nin raporladığı "bitti" anından sonra da
+// sürebiliyor. Bu, içerik bazlı ikinci bir savunma hattı: yakalanan metin
+// Riona'nın az önce söylediğiyle büyük oranda örtüşüyorsa (kendi sesinin
+// yankısı/kuyruğu yakalanmış demektir), gerçek bir kullanıcı sorusu gibi
+// işlenmeden atlanır.
+function overlapsWithLastSpoken(transcript: string, lastSpoken: string): boolean {
+  const words = normalizeForCompare(transcript).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const lastWords = new Set(normalizeForCompare(lastSpoken).split(/\s+/).filter(Boolean));
+  if (lastWords.size === 0) return false;
+  const matches = words.filter((w) => lastWords.has(w)).length;
+  return matches / words.length > 0.55;
 }
 
 export function useVoiceChat({ lang = "tr-TR", onTranscript, onVoiceMessage }: UseVoiceChatOptions) {
@@ -61,6 +85,7 @@ export function useVoiceChat({ lang = "tr-TR", onTranscript, onVoiceMessage }: U
   const voiceModeRef = useRef(false);
   const onTranscriptRef = useRef(onTranscript);
   const onVoiceMessageRef = useRef(onVoiceMessage);
+  const lastSpokenTextRef = useRef("");
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
@@ -201,10 +226,16 @@ export function useVoiceChat({ lang = "tr-TR", onTranscript, onVoiceMessage }: U
         return;
       }
 
+      if (lastSpokenTextRef.current && overlapsWithLastSpoken(transcript, lastSpokenTextRef.current)) {
+        startListening(true);
+        return;
+      }
+
       setErrorMessage(null);
       const reply = await onVoiceMessageRef.current(transcript);
       if (!voiceModeRef.current) return;
 
+      lastSpokenTextRef.current = reply;
       speak(reply, () => {
         if (!voiceModeRef.current) return;
         waitUntilSpeechFullyStopped(() => {
@@ -237,6 +268,7 @@ export function useVoiceChat({ lang = "tr-TR", onTranscript, onVoiceMessage }: U
       stopListening();
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
       setSpeaking(false);
+      lastSpokenTextRef.current = "";
     } else {
       setErrorMessage(null);
       voiceModeRef.current = true;
