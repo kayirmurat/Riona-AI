@@ -11,7 +11,7 @@ const BASE_SYSTEM_PROMPT =
 
 function getCurrentDateContext(): string {
   const formatted = new Date().toLocaleString("tr-TR", {
-    timeZone: "Europe/Istanbul",
+    timeZone: "America/New_York",
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -19,7 +19,7 @@ function getCurrentDateContext(): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-  return `Şu an: ${formatted} (Türkiye saati). Kullanıcı "bugün", "yarın", "bu hafta" gibi göreli zaman ifadeleri kullandığında hesabını bu gerçek tarihe göre yap.`;
+  return `Şu an: ${formatted} (kullanıcının saati, ABD Doğu/New York saat dilimi). Kullanıcı "bugün", "yarın", "bu hafta" gibi göreli zaman ifadeleri kullandığında hesabını bu gerçek tarihe göre yap.`;
 }
 
 async function buildSystemPrompt(): Promise<ChatMessage> {
