@@ -28,9 +28,27 @@ export async function saveTurn(
   userMessage: ChatMessage,
   assistantMessage: ChatMessage
 ): Promise<void> {
+  // Postgres'in now() fonksiyonu tek bir insert() çağrısında satır başına
+  // değil, İŞLEM BAŞINA bir kez hesaplanıyor — bu yüzden kullanıcı ve asistan
+  // satırları birebir aynı created_at değerini alıyordu. Sıralarken (özellikle
+  // realtime tetiklemesiyle geçmişin yeniden yüklendiği anda) eşit zaman
+  // damgaları arasındaki sıra belirsiz kalıp bazen ters gösteriliyordu (canlı
+  // testte gözlemlendi: kullanıcının mesajı cevaptan sonra görünüyordu).
+  // Zaman damgaları burada JS tarafında, kesin sıralı olacak şekilde veriliyor.
+  const now = Date.now();
   const { error } = await supabase.from("messages").insert([
-    { conversation_id: conversationId, role: userMessage.role, content: userMessage.content },
-    { conversation_id: conversationId, role: assistantMessage.role, content: assistantMessage.content },
+    {
+      conversation_id: conversationId,
+      role: userMessage.role,
+      content: userMessage.content,
+      created_at: new Date(now).toISOString(),
+    },
+    {
+      conversation_id: conversationId,
+      role: assistantMessage.role,
+      content: assistantMessage.content,
+      created_at: new Date(now + 1).toISOString(),
+    },
   ]);
 
   if (error) {
