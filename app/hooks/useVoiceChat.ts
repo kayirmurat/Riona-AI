@@ -108,20 +108,21 @@ export function useVoiceChat({ lang = "tr-TR", onTranscript, onVoiceMessage }: U
         if (voiceModeRef.current) startListening(true);
         return;
       }
-      // Riona hâlâ konuşuyorsa (TTS çalıyorsa) kullanıcı araya girmiş demektir
-      // — sesi hemen kesiyoruz (barge-in).
-      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-        window.speechSynthesis.cancel();
-        setSpeaking(false);
-      }
       const reply = await onVoiceMessageRef.current(transcript);
       if (voiceModeRef.current) {
-        speak(reply);
-        // Cevap seslendirilirken AYNI ANDA dinlemeye devam ediliyor ki kullanıcı
-        // Riona konuşurken araya girip konuşabilsin. Not: mikrofon ve hoparlör
-        // aynı cihazdaysa (kulaklıksız) Riona kendi sesini duyup yanlışlıkla
-        // araya girilmiş sanabilir — düzgün barge-in için kulaklık önerilir.
-        startListening(true);
+        speak(reply, () => {
+          if (!voiceModeRef.current) return;
+          // Konuşma bittikten hemen sonra dinlemeye başlarsa mikrofon kendi
+          // sesinin oda yankısını/kuyruğunu yakalayıp "kullanıcı konuştu"
+          // sanabiliyor — bu da Riona'nın kendi cevabına kendi cevap verdiği
+          // bir geri besleme döngüsüne yol açıyordu (canlı testte gözlemlendi).
+          // Kısa bir tampon süre bunu önlüyor. Not: bu yüzden Riona konuşurken
+          // araya girip konuşmak (barge-in) desteklenmiyor — mikrofon/hoparlör
+          // arasında yankı iptali olmadan güvenilir şekilde ayırt edilemiyor.
+          setTimeout(() => {
+            if (voiceModeRef.current) startListening(true);
+          }, 500);
+        });
       }
     };
 
