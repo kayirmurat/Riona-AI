@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ChatMessage } from "../../lib/ai/types";
 import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
+import { useVoiceChat } from "../hooks/useVoiceChat";
 
 interface ChatPanelProps {
   conversationId: string;
@@ -62,28 +63,41 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
     }
   }
 
-  async function sendMessage() {
-    if (!input.trim() || loading) return;
-    const userMsg: ChatMessage = { role: "user", content: input };
+  async function sendMessageText(text: string): Promise<string> {
+    const userMsg: ChatMessage = { role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
-    setInput("");
     setLoading(true);
 
+    let replyText: string;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg.content, conversationId }),
+        body: JSON.stringify({ message: text, conversationId }),
       });
       const data = await res.json();
-      const replyText = res.ok ? data.reply : `Hata: ${data.error}`;
-      setMessages((prev) => [...prev, { role: "assistant", content: replyText }]);
+      replyText = res.ok ? data.reply : `Hata: ${data.error}`;
     } catch (e) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "Bağlantı hatası oluştu." }]);
+      replyText = "Bağlantı hatası oluştu.";
     } finally {
       setLoading(false);
     }
+
+    setMessages((prev) => [...prev, { role: "assistant", content: replyText }]);
+    return replyText;
   }
+
+  async function sendMessage() {
+    if (!input.trim() || loading) return;
+    const text = input;
+    setInput("");
+    await sendMessageText(text);
+  }
+
+  const voice = useVoiceChat({
+    onTranscript: (text) => setInput((prev) => (prev ? `${prev} ${text}` : text)),
+    onVoiceMessage: (text) => sendMessageText(text),
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -151,17 +165,51 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
         {loading && <p className="text-sm text-ink-muted">Riona yazıyor…</p>}
       </div>
 
+      {voice.voiceMode && (
+        <p className="border-t border-border bg-surface-sunken px-3 py-1.5 text-center text-xs text-ink-muted">
+          {voice.speaking ? "🔊 Riona konuşuyor…" : voice.listening ? "🎙️ Dinliyorum…" : "Sesli sohbet açık"}
+        </p>
+      )}
+
       <div className="flex gap-2 border-t border-border p-3">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
           placeholder="Mesajını yaz…"
-          className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+          disabled={voice.voiceMode}
+          className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent disabled:opacity-50"
         />
+        {voice.supported && (
+          <>
+            <button
+              onClick={voice.dictate}
+              disabled={voice.listening || voice.voiceMode}
+              title="Konuşarak yaz"
+              className={`rounded-lg border px-3 py-2 text-sm transition disabled:opacity-50 ${
+                voice.listening && !voice.voiceMode
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-border bg-surface text-ink hover:bg-surface-sunken"
+              }`}
+            >
+              🎤
+            </button>
+            <button
+              onClick={voice.toggleVoiceMode}
+              title="Sesli sohbet"
+              className={`rounded-lg border px-3 py-2 text-sm transition ${
+                voice.voiceMode
+                  ? "border-accent bg-accent text-white"
+                  : "border-border bg-surface text-ink hover:bg-surface-sunken"
+              }`}
+            >
+              📞
+            </button>
+          </>
+        )}
         <button
           onClick={sendMessage}
-          disabled={loading}
+          disabled={loading || voice.voiceMode}
           className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
         >
           Gönder
