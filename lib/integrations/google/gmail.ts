@@ -168,3 +168,38 @@ export async function sendEmail(
   if (!res.ok) return "Mail gönderilemedi.";
   return "Mail başarıyla gönderildi.";
 }
+
+export async function archiveEmail(accountIdentifier: string, messageId: string): Promise<boolean> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return false;
+
+  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ removeLabelIds: ["INBOX"] }),
+  });
+  return res.ok;
+}
+
+export async function trashEmail(accountIdentifier: string, messageId: string): Promise<boolean> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return false;
+
+  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return res.ok;
+}
+
+export async function markEmailRead(accountIdentifier: string, messageId: string): Promise<boolean> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return false;
+
+  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ removeLabelIds: ["UNREAD"] }),
+  });
+  return res.ok;
+}
