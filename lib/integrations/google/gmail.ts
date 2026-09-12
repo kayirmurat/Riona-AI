@@ -2,8 +2,16 @@ import { getValidAccessTokenFor, listGoogleAccounts } from "./tokens";
 
 interface GmailMessagePart {
   mimeType?: string;
-  body?: { data?: string };
+  filename?: string;
+  body?: { data?: string; attachmentId?: string; size?: number };
   parts?: GmailMessagePart[];
+}
+
+export interface EmailAttachment {
+  filename: string;
+  mimeType: string;
+  attachmentId: string;
+  size: number;
 }
 
 function decodeBase64Url(data: string): string {
@@ -50,6 +58,50 @@ export function extractEmailBody(payload: unknown): string {
   if (html) return stripHtml(html);
   if (p.body?.data) return decodeBase64Url(p.body.data).trim();
   return "";
+}
+
+// Ekleri okumak için: dosya adı VE attachmentId'si olan parçalar gerçek ek
+// dosyalardır (gövde parçalarında filename olmuyor). İçerikleri burada
+// indirilmiyor — sadece metadata, gerçek indirme ayrı bir uç noktada
+// (kullanıcı tıkladığında) yapılıyor, DB'yi büyütmemek için.
+function collectAttachments(part: GmailMessagePart, out: EmailAttachment[]): void {
+  if (part.filename && part.body?.attachmentId) {
+    out.push({
+      filename: part.filename,
+      mimeType: part.mimeType ?? "application/octet-stream",
+      attachmentId: part.body.attachmentId,
+      size: part.body.size ?? 0,
+    });
+  }
+  for (const child of part.parts ?? []) {
+    collectAttachments(child, out);
+  }
+}
+
+export function extractAttachments(payload: unknown): EmailAttachment[] {
+  const p = payload as GmailMessagePart | undefined;
+  if (!p) return [];
+  const out: EmailAttachment[] = [];
+  collectAttachments(p, out);
+  return out;
+}
+
+export async function fetchAttachmentData(
+  accountIdentifier: string,
+  messageId: string,
+  attachmentId: string
+): Promise<Buffer | null> {
+  const accessToken = await getValidAccessTokenFor(accountIdentifier);
+  if (!accessToken) return null;
+
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data.data) return null;
+  return Buffer.from(data.data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
 
 async function fetchEmailsForAccount(identifier: string, maxResults: number): Promise<string> {
@@ -102,6 +154,8 @@ function encodeSubject(subject: string): string {
 export interface ThreadContext {
   threadId?: string | null;
   inReplyTo?: string | null;
+  cc?: string | null;
+  bcc?: string | null;
 }
 
 // threadId tek başına yeterli değil — Gmail bir mesajı var olan bir zincire ancak
@@ -109,7 +163,10 @@ export interface ThreadContext {
 // eşleştiğinde ekliyor. İkisi birlikte verilmezse cevap, alıcının kutusunda
 // orijinal yazışmadan ayrı, yeni bir konuşma olarak görünüyordu.
 function buildEncodedMessage(to: string, subject: string, body: string, ctx?: ThreadContext): string {
-  const headerLines = [`To: ${to}`, `Subject: ${encodeSubject(subject)}`];
+  const headerLines = [`To: ${to}`];
+  if (ctx?.cc) headerLines.push(`Cc: ${ctx.cc}`);
+  if (ctx?.bcc) headerLines.push(`Bcc: ${ctx.bcc}`);
+  headerLines.push(`Subject: ${encodeSubject(subject)}`);
   if (ctx?.inReplyTo) {
     headerLines.push(`In-Reply-To: ${ctx.inReplyTo}`);
     headerLines.push(`References: ${ctx.inReplyTo}`);

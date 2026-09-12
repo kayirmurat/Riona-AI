@@ -2,7 +2,7 @@ import { supabase } from "../db/supabase";
 import { getProvider } from "./provider";
 import { createPendingAction } from "./approval";
 import { createCalendarNote } from "../integrations/google/calendar";
-import { extractEmailBody } from "../integrations/google/gmail";
+import { extractEmailBody, extractAttachments } from "../integrations/google/gmail";
 import { sendPushToAll } from "../push/sendPush";
 
 const MAX_BODY_CHARS_FOR_AI = 6000;
@@ -149,6 +149,8 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
   const bodyText = extractEmailBody(msgData.payload);
   const messageIdHeader = headers.find((h: any) => h.name === "Message-ID" || h.name === "Message-Id")?.value ?? null;
   const gmailThreadId: string | null = msgData.threadId ?? null;
+  const ccHeader = headers.find((h: any) => h.name === "Cc" || h.name === "CC")?.value ?? null;
+  const attachments = extractAttachments(msgData.payload);
 
   if (NO_REPLY_PATTERN.test(from)) {
     // Aynı message id'nin iki tetikleyiciden (cron + webhook) neredeyse aynı anda
@@ -162,6 +164,8 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
       subject,
       snippet,
       body_text: bodyText || null,
+      cc: ccHeader,
+      attachments: attachments.length > 0 ? attachments : null,
       needs_reply: false,
       status: "info",
       category: AUTO_NOTIFICATION_CATEGORY,
@@ -191,6 +195,8 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
         account: account.label,
         thread_id: gmailThreadId,
         in_reply_to: messageIdHeader,
+        cc: ccHeader,
+        bcc: null,
       },
       `"${subject}" konulu maile öneri cevap (${account.label})`
     );
@@ -224,6 +230,8 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
     subject,
     snippet,
     body_text: bodyText || null,
+    cc: ccHeader,
+    attachments: attachments.length > 0 ? attachments : null,
     needs_reply: classification.needs_reply,
     draft_subject: draftSubject,
     draft_body: draftBody,
