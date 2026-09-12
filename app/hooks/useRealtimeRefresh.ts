@@ -21,9 +21,12 @@ export function useRealtimeRefresh(table: string, onChange: () => void, filter?:
     let cleanupChannel: (() => void) | undefined;
     const channelName = filter ? `${table}:${filter.column}:${filter.value}` : table;
 
+    console.log(`[Realtime] useRealtimeRefresh effect çalıştı: table=${table}`);
+
     getBrowserSupabase()
       .then((supabase) => {
         if (cancelled) return;
+        console.log(`[Realtime] ${table} kanalına abone olunuyor.`);
 
         const channel = supabase
           .channel(channelName)
