@@ -74,7 +74,7 @@ Kurallar:
 - needs_reply: kullanıcının kişisel olarak cevap yazması gerekiyorsa true; bilgilendirme, fatura, bülten, otomatik bildirim veya promosyonsa false.
 - needs_reply true ise draft_subject ve draft_body kısa ve profesyonel bir taslakla doldurulsun, değilse ikisi de null olsun.
 - is_meeting: e-posta bir toplantı/randevu daveti içeriyorsa veya belirli bir toplantı zamanından bahsediyorsa true.
-- is_meeting true ise meeting_title, meeting_start ve meeting_end ISO 8601 formatında (yıl belirtilmemişse ${currentYear} varsay, saat dilimi olarak Türkiye/İstanbul yerel saatini varsay), meeting_location (yoksa null) doldurulsun. Bitiş saati belirtilmemişse başlangıçtan 1 saat sonrası olsun.
+- is_meeting true ise meeting_title, meeting_start ve meeting_end ISO 8601 formatında, saat dilimi ofseti EKLEMEDEN düz yerel saat olarak (örn. "2026-09-19T14:00:00", sonunda Z veya +/-saat farkı olmadan — kullanıcının gerçek saat dilimi ABD Doğu/New York, bu ayrıca ayarlanıyor) doldurulsun (yıl belirtilmemişse ${currentYear} varsay), meeting_location (yoksa null) doldurulsun. Bitiş saati belirtilmemişse başlangıçtan 1 saat sonrası olsun.
 - Zamanı makul şekilde tahmin edemiyorsan is_meeting false yap.
 - category: e-postanın konusuna en uygun KISA (1-3 kelime) bir kategori adı (örn. "Faturalandırma", "Franchise Operasyonları", "Randevu/Toplantı", "Kişisel"). Sabit bir liste yok, içeriğe göre sen üret. ${categoriesHint}`,
         },

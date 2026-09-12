@@ -1,27 +1,26 @@
 import { getValidAccessTokenFor, listGoogleAccounts } from "./tokens";
 
-// Ham ISO zaman damgasını (etkinliğin kendi saat diliminde olabilir, örn. ABD
-// Doğu saati) modele doğrudan vermek yerine Türkiye saatine çevirip haftanın
-// günüyle birlikte okunabilir bir metne dönüştürüyoruz — canlı testte model
-// ham ISO string'i kendi başına yorumlamaya çalışıp yanlış tarih/saat dilimi
-// bilgisi uydurmuştu ("doğu saatiyle 02:00" gibi, kullanıcının yerel saatiyle
-// hiç ilgisi olmayan bir ifade).
+// Ham ISO zaman damgasını (etkinliğin kendi saat diliminde olabilir) modele
+// doğrudan vermek yerine kullanıcının gerçek saat dilimine (ABD Doğu/New York
+// — kullanıcı Florida'da yaşıyor) çevirip haftanın günüyle birlikte okunabilir
+// bir metne dönüştürüyoruz — canlı testte model ham ISO string'i kendi başına
+// yorumlamaya çalışıp yanlış tarih/saat dilimi bilgisi uydurmuştu.
 function formatEventTime(start: { dateTime?: string; date?: string } | undefined): string {
   if (!start) return "Bilinmiyor";
   if (start.dateTime) {
     return new Date(start.dateTime).toLocaleString("tr-TR", {
-      timeZone: "Europe/Istanbul",
+      timeZone: "America/New_York",
       weekday: "long",
       day: "numeric",
       month: "long",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-    }) + " (Türkiye saati)";
+    }) + " (New York saati)";
   }
   if (start.date) {
     return new Date(start.date).toLocaleDateString("tr-TR", {
-      timeZone: "Europe/Istanbul",
+      timeZone: "America/New_York",
       weekday: "long",
       day: "numeric",
       month: "long",
@@ -177,8 +176,11 @@ export async function createCalendarNote(
       summary: event.title,
       location: event.location ?? undefined,
       description: event.description,
-      start: { dateTime: event.start },
-      end: { dateTime: event.end },
+      // timeZone açıkça veriliyor ki event.start/end saat dilimi ofseti içermeden
+      // (düz yerel saat) gelse bile Google, yaz/kış saati (DST) geçişini kendi
+      // hesaplasın — modelin ofseti doğru hesaplamasına güvenmek yerine.
+      start: { dateTime: event.start, timeZone: "America/New_York" },
+      end: { dateTime: event.end, timeZone: "America/New_York" },
     }),
   });
 
