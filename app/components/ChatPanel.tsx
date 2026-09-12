@@ -203,7 +203,7 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
                   : "border-border bg-surface text-ink hover:bg-surface-sunken"
               }`}
             >
-              📞
+              🗣️
             </button>
           </>
         )}
