@@ -1,5 +1,36 @@
 import { getValidAccessTokenFor, listGoogleAccounts } from "./tokens";
 
+// Ham ISO zaman damgasını (etkinliğin kendi saat diliminde olabilir, örn. ABD
+// Doğu saati) modele doğrudan vermek yerine Türkiye saatine çevirip haftanın
+// günüyle birlikte okunabilir bir metne dönüştürüyoruz — canlı testte model
+// ham ISO string'i kendi başına yorumlamaya çalışıp yanlış tarih/saat dilimi
+// bilgisi uydurmuştu ("doğu saatiyle 02:00" gibi, kullanıcının yerel saatiyle
+// hiç ilgisi olmayan bir ifade).
+function formatEventTime(start: { dateTime?: string; date?: string } | undefined): string {
+  if (!start) return "Bilinmiyor";
+  if (start.dateTime) {
+    return new Date(start.dateTime).toLocaleString("tr-TR", {
+      timeZone: "Europe/Istanbul",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }) + " (Türkiye saati)";
+  }
+  if (start.date) {
+    return new Date(start.date).toLocaleDateString("tr-TR", {
+      timeZone: "Europe/Istanbul",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }) + " (tüm gün)";
+  }
+  return "Bilinmiyor";
+}
+
 async function fetchEventsForAccount(identifier: string, maxResults: number): Promise<string> {
   const accessToken = await getValidAccessTokenFor(identifier);
   if (!accessToken) return "Bu hesap bağlı değil.";
@@ -17,7 +48,7 @@ async function fetchEventsForAccount(identifier: string, maxResults: number): Pr
 
   return events
     .map((e: any) => {
-      const start = e.start?.dateTime ?? e.start?.date ?? "Bilinmiyor";
+      const start = formatEventTime(e.start);
       return `Başlık: ${e.summary ?? "(başlıksız)"}\nZaman: ${start}${
         e.location ? `\nYer: ${e.location}` : ""
       }`;
