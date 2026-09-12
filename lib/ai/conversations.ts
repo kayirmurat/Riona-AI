@@ -51,6 +51,25 @@ export async function touchOrCreateConversation(id: string, firstMessage?: strin
   });
 }
 
+// Her gün (ABD Doğu/New York saatiyle) gece yarısı gün adıyla yeni bir sohbet
+// açar — kullanıcı hangi konuşmanın hangi güne ait olduğunu başlıktan görsün
+// diye. Aynı gün için cron ikinci kez tetiklenirse (retry vb.) aynı başlıkla
+// bir satır zaten varsa tekrar oluşturmuyor.
+export async function createDailyConversationIfNeeded(): Promise<{ created: boolean; title: string }> {
+  const title = new Date().toLocaleDateString("tr-TR", {
+    timeZone: "America/New_York",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+
+  const { data: existing } = await supabase.from("conversations").select("id").eq("title", title).maybeSingle();
+  if (existing) return { created: false, title };
+
+  await createConversation(title);
+  return { created: true, title };
+}
+
 export async function renameConversation(id: string, title: string): Promise<void> {
   const trimmed = title.trim();
   if (!trimmed) throw new Error("Başlık boş olamaz.");
