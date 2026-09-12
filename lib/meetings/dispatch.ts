@@ -29,14 +29,14 @@ async function findDueMeetings(): Promise<DueMeeting[]> {
 }
 
 // Aynı satırı iki cron tick'inin (veya cron + manuel tetiklemenin) çakışıp iki kez
-// dispatch etmesini önler: update sadece status hâlâ 'scheduled' ise satırı etkiler,
+// dispatch etmesini önler: update sadece status verilen listedeyse satırı etkiler,
 // dönen satır boşsa başka biri zaten almış demektir — burada durulur.
-async function claimMeeting(id: string): Promise<boolean> {
+async function claimMeetingFrom(id: string, fromStatuses: string[]): Promise<boolean> {
   const { data, error } = await supabase
     .from("meetings")
     .update({ status: "dispatching", updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("status", "scheduled")
+    .in("status", fromStatuses)
     .select("id");
 
   if (error) {
@@ -44,6 +44,17 @@ async function claimMeeting(id: string): Promise<boolean> {
     return false;
   }
   return (data ?? []).length > 0;
+}
+
+// failure_reason kolonu henüz eklenmemişse (kullanıcı SQL'i çalıştırmadıysa) bu
+// yazma sessizce hata verir ama status güncellemesini ASLA etkilemesin diye
+// ayrı, best-effort bir çağrı olarak yapılıyor — Stage 21'de yaşanan "eksik
+// kolon insert'i sessizce bozuyor" sınıfı hatadan ders çıkarıldı.
+async function tryWriteFailureReason(id: string, message: string | null): Promise<void> {
+  const { error } = await supabase.from("meetings").update({ failure_reason: message }).eq("id", id);
+  if (error) {
+    console.error(`[meetings/dispatch] failure_reason yazılamadı (kolon eksik olabilir): meeting=${id}`, error);
+  }
 }
 
 async function callMeetingBaas(meetingUrl: string, webhookUrl: string): Promise<{ ok: boolean; botId?: string; message?: string }> {
@@ -132,7 +143,7 @@ export async function dispatchDueBots(): Promise<{ dispatched: number; skipped: 
   let failed = 0;
 
   for (const meeting of candidates) {
-    const claimed = await claimMeeting(meeting.id);
+    const claimed = await claimMeetingFrom(meeting.id, ["scheduled"]);
     if (!claimed) {
       skipped++;
       continue;
@@ -145,6 +156,7 @@ export async function dispatchDueBots(): Promise<{ dispatched: number; skipped: 
         .from("meetings")
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", meeting.id);
+      await tryWriteFailureReason(meeting.id, result.message ?? null);
       failed++;
       continue;
     }
@@ -162,4 +174,41 @@ export async function dispatchDueBots(): Promise<{ dispatched: number; skipped: 
   }
 
   return { dispatched, skipped, failed };
+}
+
+// Kullanıcının Toplantılar panelinden tek bir toplantıya elle bot göndermesi
+// için — otomatik algılama LEAD_WINDOW_MIN penceresini kaçırmış olabilir veya
+// kullanıcı daha erken göndermek isteyebilir. "failed" durumundaki bir
+// toplantı için de "Tekrar Dene" olarak kullanılıyor.
+export async function dispatchSingleMeeting(meetingId: string): Promise<{ ok: boolean; message: string }> {
+  const appBaseUrl = process.env.APP_BASE_URL;
+  const pathSecret = process.env.MEETING_BAAS_WEBHOOK_PATH_SECRET;
+  if (!appBaseUrl || !pathSecret || !process.env.MEETING_BAAS_API_KEY) {
+    return { ok: false, message: "Meeting BaaS yapılandırması eksik." };
+  }
+  const webhookUrl = `${appBaseUrl}/api/webhooks/meeting-baas/${pathSecret}`;
+
+  const { data: meeting } = await supabase.from("meetings").select("id, meeting_url").eq("id", meetingId).maybeSingle();
+  if (!meeting) return { ok: false, message: "Toplantı bulunamadı." };
+
+  const claimed = await claimMeetingFrom(meetingId, ["scheduled", "failed"]);
+  if (!claimed) return { ok: false, message: "Toplantı şu anda gönderilemez durumda (zaten gönderilmiş veya işleniyor olabilir)." };
+
+  const result = await callMeetingBaas(meeting.meeting_url, webhookUrl);
+  if (!result.ok) {
+    await supabase.from("meetings").update({ status: "failed", updated_at: new Date().toISOString() }).eq("id", meetingId);
+    await tryWriteFailureReason(meetingId, result.message ?? null);
+    return { ok: false, message: result.message ?? "Bot gönderilemedi." };
+  }
+
+  await supabase
+    .from("meetings")
+    .update({
+      status: "dispatched",
+      bot_id: result.botId ?? null,
+      dispatched_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", meetingId);
+  return { ok: true, message: "Bot gönderildi." };
 }

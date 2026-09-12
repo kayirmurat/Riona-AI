@@ -38,6 +38,7 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose, view, onS
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [pendingMailCount, setPendingMailCount] = useState(0);
+  const [newMeetingsCount, setNewMeetingsCount] = useState(0);
 
   async function loadConversations() {
     try {
@@ -61,13 +62,33 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose, view, onS
     }
   }
 
+  // "Yeni" toplantı sayısı sunucuda değil, bu cihazda (localStorage) tutulan
+  // son görülme zamanına göre hesaplanıyor — kullanıcı Toplantılar sekmesine
+  // her girdiğinde bu zaman damgası güncellenip rozet sıfırlanıyor.
+  async function loadNewMeetingsCount() {
+    try {
+      let lastSeen = localStorage.getItem("meetingsLastSeenAt");
+      if (!lastSeen) {
+        lastSeen = new Date().toISOString();
+        localStorage.setItem("meetingsLastSeenAt", lastSeen);
+      }
+      const res = await fetch(`/api/meetings/new-count?since=${encodeURIComponent(lastSeen)}`);
+      const data = await res.json();
+      setNewMeetingsCount(typeof data.count === "number" ? data.count : 0);
+    } catch (e) {
+      console.error("Yeni toplantı sayısı alınamadı:", e);
+    }
+  }
+
   useEffect(() => {
     loadConversations();
     loadPendingMailCount();
+    loadNewMeetingsCount();
   }, []);
 
   useRealtimeRefresh("conversations", loadConversations);
   useRealtimeRefresh("scanned_emails", loadPendingMailCount);
+  useRealtimeRefresh("meetings", loadNewMeetingsCount);
 
   async function handleCreate() {
     const res = await fetch("/api/conversations", { method: "POST" });
@@ -209,7 +230,13 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose, view, onS
           {modules.map((mod) => (
             <button
               key={mod.id}
-              onClick={() => onSelectView(mod.id)}
+              onClick={() => {
+                onSelectView(mod.id);
+                if (mod.id === "meetings") {
+                  localStorage.setItem("meetingsLastSeenAt", new Date().toISOString());
+                  setNewMeetingsCount(0);
+                }
+              }}
               className={`mb-1 flex w-full items-center justify-between rounded-lg px-2 py-2 text-sm ${
                 view === mod.id ? "bg-surface-sunken text-ink" : "text-ink-muted hover:bg-surface-sunken"
               }`}
@@ -218,6 +245,11 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose, view, onS
               {mod.id === "mail" && pendingMailCount > 0 && (
                 <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-xs font-medium text-white">
                   {pendingMailCount}
+                </span>
+              )}
+              {mod.id === "meetings" && newMeetingsCount > 0 && (
+                <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-xs font-medium text-white">
+                  {newMeetingsCount}
                 </span>
               )}
             </button>
