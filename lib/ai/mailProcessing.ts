@@ -170,7 +170,10 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
       status: "info",
       category: AUTO_NOTIFICATION_CATEGORY,
     });
-    if (error) return "already_scanned";
+    if (error) {
+      console.error(`[mailProcessing] insert hatası (no-reply): account=${account.label} message=${messageId}`, error);
+      return "already_scanned";
+    }
     return "inserted";
   }
 
@@ -239,7 +242,10 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
     status: classification.needs_reply ? "pending" : "info",
     category: classification.category,
   });
-  if (error) return "already_scanned";
+  if (error) {
+    console.error(`[mailProcessing] insert hatası: account=${account.label} message=${messageId}`, error);
+    return "already_scanned";
+  }
   console.log(`[mailProcessing] kaydedildi: account=${account.label} message=${messageId} subject="${subject}" needs_reply=${classification.needs_reply}`);
   return "inserted";
 }
