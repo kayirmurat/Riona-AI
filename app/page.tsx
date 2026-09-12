@@ -10,6 +10,7 @@ const ACTIVE_ID_KEY = "riona_active_conversation_id";
 export default function Home() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [view, setView] = useState("chat");
 
   useEffect(() => {
     async function init() {
@@ -38,7 +39,15 @@ export default function Home() {
   function handleSelect(id: string) {
     localStorage.setItem(ACTIVE_ID_KEY, id);
     setActiveId(id);
+    setView("chat");
   }
+
+  function handleSelectView(id: string) {
+    setView(id);
+    setSidebarOpen(false);
+  }
+
+  const activeModule = modules.find((mod) => mod.id === view);
 
   return (
     <main className="flex h-screen overflow-hidden bg-surface-muted">
@@ -47,37 +56,35 @@ export default function Home() {
         onSelect={handleSelect}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        view={view}
+        onSelectView={handleSelectView}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col md:flex-row">
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col border-border bg-surface md:border-r">
-          <div className="flex items-center gap-2 border-b border-border px-4 py-3 md:hidden">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="rounded-md p-1 text-ink-muted hover:bg-surface-sunken"
-              aria-label="Menü"
-            >
-              ☰
-            </button>
-            <span className="text-sm font-medium text-ink">Riona AI</span>
-          </div>
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3 md:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="rounded-md p-1 text-ink-muted hover:bg-surface-sunken"
+            aria-label="Menü"
+          >
+            ☰
+          </button>
+          <span className="text-sm font-medium text-ink">Riona AI</span>
+        </div>
 
-          {activeId ? (
+        {view === "chat" ? (
+          activeId ? (
             <ChatPanel conversationId={activeId} />
           ) : (
             <p className="p-4 text-sm text-ink-muted">Yükleniyor…</p>
-          )}
-        </section>
-
-        <aside className="w-full shrink-0 space-y-4 overflow-y-auto border-t border-border bg-surface-muted p-4 md:w-80 md:border-t-0">
-          {modules.map((mod) => (
-            <div key={mod.id}>
-              <h2 className="mb-2 text-sm font-semibold text-ink">{mod.title}</h2>
-              <mod.component />
-            </div>
-          ))}
-        </aside>
-      </div>
+          )
+        ) : activeModule ? (
+          <div className="flex-1 overflow-y-auto p-4">
+            <h2 className="mb-3 text-sm font-semibold text-ink">{activeModule.title}</h2>
+            <activeModule.component />
+          </div>
+        ) : null}
+      </section>
     </main>
   );
 }
