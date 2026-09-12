@@ -18,7 +18,12 @@ interface ScannedEmail {
   category: string | null;
 }
 
-type Tab = "pending" | "info";
+type Tab = "pending" | "info" | "history";
+
+const STATUS_LABELS: Record<string, string> = {
+  executed: "Gönderildi",
+  rejected: "Reddedildi",
+};
 
 export default function MailModule() {
   const [scannedEmails, setScannedEmails] = useState<ScannedEmail[]>([]);
@@ -79,8 +84,9 @@ export default function MailModule() {
   const activeEmails = scannedEmails.filter((e) => e.status !== "executed" && e.status !== "rejected");
   const pendingEmails = activeEmails.filter((e) => e.needs_reply);
   const infoEmails = activeEmails.filter((e) => !e.needs_reply);
-  const categories = Array.from(new Set(activeEmails.map((e) => e.category).filter((c): c is string => !!c))).sort();
-  const tabEmails = tab === "pending" ? pendingEmails : infoEmails;
+  const historyEmails = scannedEmails.filter((e) => e.status === "executed" || e.status === "rejected");
+  const categories = Array.from(new Set(scannedEmails.map((e) => e.category).filter((c): c is string => !!c))).sort();
+  const tabEmails = tab === "pending" ? pendingEmails : tab === "info" ? infoEmails : historyEmails;
   const visibleEmails = selectedCategory ? tabEmails.filter((e) => e.category === selectedCategory) : tabEmails;
 
   return (
@@ -101,6 +107,14 @@ export default function MailModule() {
           }`}
         >
           Bilgi Amaçlı ({infoEmails.length})
+        </button>
+        <button
+          onClick={() => setTab("history")}
+          className={`flex-1 rounded-md px-2 py-1.5 transition ${
+            tab === "history" ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink"
+          }`}
+        >
+          Geçmiş ({historyEmails.length})
         </button>
       </div>
 
@@ -134,7 +148,11 @@ export default function MailModule() {
 
       {visibleEmails.length === 0 && (
         <p className="text-sm text-ink-muted">
-          {tab === "pending" ? "Onay bekleyen mail yok." : "Bilgi amaçlı taranan mail yok."}
+          {tab === "pending"
+            ? "Onay bekleyen mail yok."
+            : tab === "info"
+              ? "Bilgi amaçlı taranan mail yok."
+              : "Geçmişte gönderilmiş/reddedilmiş mail yok."}
         </p>
       )}
 
@@ -143,11 +161,18 @@ export default function MailModule() {
           <div key={e.id} className="rounded-lg border border-border bg-surface p-3 text-sm">
             <div className="flex items-start justify-between gap-2">
               <p className="font-medium text-ink">{e.subject || "(konu yok)"}</p>
-              {e.category && (
-                <span className="shrink-0 rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-muted">
-                  {e.category}
-                </span>
-              )}
+              <div className="flex shrink-0 gap-1">
+                {STATUS_LABELS[e.status] && (
+                  <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-muted">
+                    {STATUS_LABELS[e.status]}
+                  </span>
+                )}
+                {e.category && (
+                  <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-ink-muted">
+                    {e.category}
+                  </span>
+                )}
+              </div>
             </div>
             <p className="mb-1 text-xs text-ink-muted">
               Kimden: {e.from_address} · Hesap: {e.account_label}
@@ -170,7 +195,16 @@ export default function MailModule() {
               </div>
             )}
 
-            {e.needs_reply ? (
+            {e.status === "executed" || e.status === "rejected" ? (
+              e.draft_body && (
+                <div className="rounded-md border border-border bg-surface-sunken p-2">
+                  <p className="mb-1 text-xs text-ink-muted">
+                    {e.status === "executed" ? "Gönderilen/kaydedilen cevap:" : "Reddedilen taslak:"}
+                  </p>
+                  <p className="text-xs text-ink">{e.draft_body}</p>
+                </div>
+              )
+            ) : e.needs_reply ? (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-2">
                 <p className="mb-1 text-xs text-amber-800">Önerilen cevap (düzenleyebilirsin):</p>
                 <input
