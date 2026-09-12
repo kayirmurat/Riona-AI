@@ -23,7 +23,11 @@ type Tab = "pending" | "info" | "history";
 const STATUS_LABELS: Record<string, string> = {
   executed: "Gönderildi",
   rejected: "Reddedildi",
+  archived: "Arşivlendi",
+  trashed: "Silindi",
 };
+
+const TERMINAL_STATUSES = new Set(["executed", "rejected", "archived", "trashed"]);
 
 export default function MailModule() {
   const [scannedEmails, setScannedEmails] = useState<ScannedEmail[]>([]);
@@ -81,10 +85,19 @@ export default function MailModule() {
     loadScannedEmails();
   }
 
-  const activeEmails = scannedEmails.filter((e) => e.status !== "executed" && e.status !== "rejected");
+  async function handleQuickAction(id: string, action: "archive" | "trash" | "mark_read") {
+    await fetch("/api/scanned-emails/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action }),
+    });
+    loadScannedEmails();
+  }
+
+  const activeEmails = scannedEmails.filter((e) => !TERMINAL_STATUSES.has(e.status));
   const pendingEmails = activeEmails.filter((e) => e.needs_reply);
   const infoEmails = activeEmails.filter((e) => !e.needs_reply);
-  const historyEmails = scannedEmails.filter((e) => e.status === "executed" || e.status === "rejected");
+  const historyEmails = scannedEmails.filter((e) => TERMINAL_STATUSES.has(e.status));
   const categories = Array.from(new Set(scannedEmails.map((e) => e.category).filter((c): c is string => !!c))).sort();
   const tabEmails = tab === "pending" ? pendingEmails : tab === "info" ? infoEmails : historyEmails;
   const visibleEmails = selectedCategory ? tabEmails.filter((e) => e.category === selectedCategory) : tabEmails;
@@ -246,6 +259,27 @@ export default function MailModule() {
             ) : (
               <p className="text-xs text-ink-muted">Yanıt gerektirmiyor.</p>
             )}
+
+            <div className="mt-2 flex flex-wrap gap-2 border-t border-border pt-2">
+              <button
+                onClick={() => handleQuickAction(e.id, "mark_read")}
+                className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink-muted hover:bg-surface-sunken"
+              >
+                Okundu İşaretle
+              </button>
+              <button
+                onClick={() => handleQuickAction(e.id, "archive")}
+                className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink-muted hover:bg-surface-sunken"
+              >
+                Arşivle
+              </button>
+              <button
+                onClick={() => handleQuickAction(e.id, "trash")}
+                className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink-muted hover:bg-surface-sunken"
+              >
+                Sil
+              </button>
+            </div>
           </div>
         ))}
       </div>
