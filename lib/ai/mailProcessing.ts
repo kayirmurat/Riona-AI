@@ -3,6 +3,7 @@ import { getProvider } from "./provider";
 import { createPendingAction } from "./approval";
 import { createCalendarNote } from "../integrations/google/calendar";
 import { extractEmailBody, extractAttachments } from "../integrations/google/gmail";
+import { getValidAccessTokenFor } from "../integrations/google/tokens";
 import { sendPushToAll } from "../push/sendPush";
 
 const MAX_BODY_CHARS_FOR_AI = 6000;
@@ -248,4 +249,97 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
   }
   console.log(`[mailProcessing] kaydedildi: account=${account.label} message=${messageId} subject="${subject}" needs_reply=${classification.needs_reply}`);
   return "inserted";
+}
+
+async function generateReplyDraft(from: string, subject: string, content: string): Promise<{ subject: string; body: string }> {
+  const provider = getProvider();
+  const response = await provider.chat(
+    [
+      {
+        role: "system",
+        content: `Kullanıcı, AI tarafından "cevap gerektirmiyor" diye sınıflandırılmış bir e-postaya yine de elle bir cevap taslağı hazırlanmasını istedi. SADECE şu JSON formatında yanıt ver, başka hiçbir şey yazma:
+{"subject": string, "body": string}
+Kısa, profesyonel bir cevap taslağı yaz. Konu satırı "Re: " ile başlasın.`,
+      },
+      { role: "user", content: `Kimden: ${from}\nKonu: ${subject}\nİçerik: ${content}` },
+    ],
+    undefined,
+    undefined,
+    { type: "json_object" }
+  );
+
+  const parsed = JSON.parse(response.content || "{}");
+  return {
+    subject: typeof parsed.subject === "string" && parsed.subject.trim() ? parsed.subject.trim() : `Re: ${subject}`,
+    body: typeof parsed.body === "string" ? parsed.body.trim() : "",
+  };
+}
+
+// Bilgilendirme amaçlı ("cevap gerektirmiyor") sınıflandırılan bir maile
+// kullanıcı sonradan yine de cevap yazmak isteyebilir — AI'ın needs_reply
+// kararı kesin değil, kullanıcının kendi kararı üstün. Bu, o mail için
+// isteğe bağlı olarak sonradan bir taslak üretip onay kuyruğuna sokar.
+export async function generateDraftForEmail(emailId: string): Promise<{ success: boolean; error?: string }> {
+  const { data: email } = await supabase.from("scanned_emails").select("*").eq("id", emailId).maybeSingle();
+  if (!email) return { success: false, error: "Mail bulunamadı." };
+  if (email.pending_action_id) return { success: false, error: "Bu mail için zaten bir taslak/aksiyon var." };
+
+  const { data: account } = await supabase
+    .from("google_accounts")
+    .select("email, label")
+    .eq("label", email.account_label)
+    .maybeSingle();
+  if (!account) return { success: false, error: "Hesap bulunamadı." };
+
+  const accessToken = await getValidAccessTokenFor(account.email);
+  if (!accessToken) return { success: false, error: "Hesap bağlı değil." };
+
+  // Thread/Message-ID bilgisi tarama sırasında sadece needs_reply=true olan
+  // mailler için saklanıyor (pending_actions.arguments içinde) — bilgilendirme
+  // mailleri için burada tekrar Gmail'den çekiliyor.
+  let gmailThreadId: string | null = null;
+  let messageIdHeader: string | null = null;
+  const msgRes = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.gmail_message_id}?format=metadata&metadataHeaders=Message-ID`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (msgRes.ok) {
+    const msgData = await msgRes.json();
+    gmailThreadId = msgData.threadId ?? null;
+    const headers = msgData.payload?.headers ?? [];
+    messageIdHeader = headers.find((h: any) => h.name === "Message-ID" || h.name === "Message-Id")?.value ?? null;
+  }
+
+  const content = (email.body_text?.trim() || email.snippet || "") as string;
+  const draft = await generateReplyDraft(email.from_address, email.subject, content);
+  const replyTo = (email.from_address as string).match(/<(.+)>/)?.[1] ?? email.from_address;
+
+  const pendingActionId = await createPendingAction(
+    "system-automation",
+    "create_email_draft",
+    {
+      to: replyTo,
+      subject: draft.subject,
+      body: draft.body,
+      account: email.account_label,
+      thread_id: gmailThreadId,
+      in_reply_to: messageIdHeader,
+      cc: email.cc,
+      bcc: null,
+    },
+    `"${email.subject}" konulu maile öneri cevap (${email.account_label})`
+  );
+
+  await supabase
+    .from("scanned_emails")
+    .update({
+      needs_reply: true,
+      draft_subject: draft.subject,
+      draft_body: draft.body,
+      pending_action_id: pendingActionId,
+      status: "pending",
+    })
+    .eq("id", emailId);
+
+  return { success: true };
 }

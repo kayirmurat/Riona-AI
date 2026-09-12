@@ -54,6 +54,8 @@ export default function MailModule() {
   const [searchActive, setSearchActive] = useState(false);
   const [searchResults, setSearchResults] = useState<ScannedEmail[]>([]);
   const [searching, setSearching] = useState(false);
+  const [generatingDraftFor, setGeneratingDraftFor] = useState<Record<string, boolean>>({});
+  const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
 
   async function loadScannedEmails() {
     try {
@@ -128,6 +130,29 @@ export default function MailModule() {
       runSearch(searchQuery);
     } else {
       loadScannedEmails();
+    }
+  }
+
+  async function generateDraft(id: string) {
+    setGeneratingDraftFor((prev) => ({ ...prev, [id]: true }));
+    setDraftErrors((prev) => ({ ...prev, [id]: "" }));
+    try {
+      const res = await fetch("/api/scanned-emails/generate-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setDraftErrors((prev) => ({ ...prev, [id]: data.error ?? "Taslak oluşturulamadı." }));
+        return;
+      }
+      refreshAfterAction();
+    } catch (e) {
+      console.error("Taslak oluşturulamadı:", e);
+      setDraftErrors((prev) => ({ ...prev, [id]: "Bağlantı hatası oluştu." }));
+    } finally {
+      setGeneratingDraftFor((prev) => ({ ...prev, [id]: false }));
     }
   }
 
@@ -404,7 +429,19 @@ export default function MailModule() {
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-ink-muted">Yanıt gerektirmiyor.</p>
+              <div className="rounded-md border border-border bg-surface-sunken p-2">
+                <p className="mb-2 text-xs text-ink-muted">
+                  Yanıt gerektirmiyor olarak sınıflandırıldı, ama istersen bir cevap taslağı hazırlanabilir.
+                </p>
+                <button
+                  onClick={() => generateDraft(e.id)}
+                  disabled={generatingDraftFor[e.id]}
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken disabled:opacity-50"
+                >
+                  {generatingDraftFor[e.id] ? "Taslak hazırlanıyor…" : "Cevap Taslağı Hazırla"}
+                </button>
+                {draftErrors[e.id] && <p className="mt-1 text-xs text-red-600">{draftErrors[e.id]}</p>}
+              </div>
             )}
 
             <div className="mt-2 flex flex-wrap gap-2 border-t border-border pt-2">
