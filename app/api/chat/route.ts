@@ -3,9 +3,10 @@ import { askRiona } from "../../../lib/ai/core";
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, conversationId } = (await req.json()) as {
+    const { message, conversationId, voiceMode } = (await req.json()) as {
       message: string;
       conversationId: string;
+      voiceMode?: boolean;
     };
 
     if (!message || typeof message !== "string") {
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "conversationId eksik." }, { status: 400 });
     }
 
-    const reply = await askRiona(conversationId, message);
+    const reply = await askRiona(conversationId, message, { voiceMode: Boolean(voiceMode) });
     return NextResponse.json({ reply });
   } catch (err) {
     console.error("Riona AI Core error:", err);

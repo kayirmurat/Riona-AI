@@ -70,7 +70,7 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
     }
   }
 
-  async function sendMessageText(text: string): Promise<string> {
+  async function sendMessageText(text: string, isVoice = false): Promise<string> {
     const userMsg: ChatMessage = { role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
@@ -80,7 +80,7 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, conversationId }),
+        body: JSON.stringify({ message: text, conversationId, voiceMode: isVoice }),
       });
       const data = await res.json();
       replyText = res.ok ? data.reply : `Hata: ${data.error}`;
@@ -98,12 +98,12 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
     if (!input.trim() || loading) return;
     const text = input;
     setInput("");
-    await sendMessageText(text);
+    await sendMessageText(text, false);
   }
 
   const voice = useVoiceChat({
     onTranscript: (text) => setInput((prev) => (prev ? `${prev} ${text}` : text)),
-    onVoiceMessage: (text) => sendMessageText(text),
+    onVoiceMessage: (text) => sendMessageText(text, true),
   });
 
   return (
@@ -229,6 +229,11 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
           Gönder
         </button>
       </div>
+      {!voice.supported && (
+        <p className="px-3 pb-2 text-xs text-ink-muted">
+          Sesli özellikler bu tarayıcıda desteklenmiyor — Chrome, Edge veya Safari kullan.
+        </p>
+      )}
     </div>
   );
 }
