@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../../lib/ai/types";
 import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
 import { useVoiceChat } from "../hooks/useVoiceChat";
@@ -18,6 +18,13 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
   const [correctionText, setCorrectionText] = useState("");
   const [correctedIndices, setCorrectedIndices] = useState<Set<number>>(new Set());
   const [submittingCorrection, setSubmittingCorrection] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Her yeni mesajda veya "yazıyor..." göstergesinde otomatik en alta kaydırır
+  // — kullanıcı elle kaydırmadan sohbeti takip edebilsin diye.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
   async function loadHistory(id: string) {
     try {
@@ -163,6 +170,7 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
           </div>
         ))}
         {loading && <p className="text-sm text-ink-muted">Riona yazıyor…</p>}
+        <div ref={bottomRef} />
       </div>
 
       {voice.voiceMode && (

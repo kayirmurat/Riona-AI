@@ -1,19 +1,26 @@
 import { supabase } from "../db/supabase";
 import type { ChatMessage } from "./types";
 
+// Sınırsız geçmiş, çok uzayan tek bir günlük sohbette modelin bağlam
+// limitine çarpıp çirkin bir hatayla sonuçlanabiliyordu — sadece SON
+// HISTORY_LIMIT mesaj gönderiliyor. En yeniden geriye doğru çekilip
+// (limit uygulanabilsin diye) sonra kronolojik sıraya çevriliyor.
+const HISTORY_LIMIT = 80;
+
 export async function getHistory(conversationId: string): Promise<ChatMessage[]> {
   const { data, error } = await supabase
     .from("messages")
     .select("role, content")
     .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(HISTORY_LIMIT);
 
   if (error) {
     console.error("Memory getHistory error:", error);
     return [];
   }
 
-  return (data ?? []) as ChatMessage[];
+  return ((data ?? []) as ChatMessage[]).reverse();
 }
 
 export async function saveTurn(

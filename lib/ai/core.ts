@@ -85,6 +85,13 @@ function detectForcedTool(userMessage: string): string | null {
 const APPROVE_WORDS = ["onaylıyorum", "onayla", "evet yap", "onay", "tamam yap"];
 const REJECT_WORDS = ["iptal", "vazgeç", "yapma"];
 
+// Tek bir kullanıcı mesajı, birbirine bağlı birden fazla araç çağrısı
+// gerektirebilir ("takvimime bak, sonra X'e mail at" gibi) — eskiden sadece
+// İLK araç çağrısı işlenip ikinci adım hiç gerçekleşmiyordu. Şimdi model
+// tool_calls döndürdüğü sürece devam eden bir döngü var; MAX_TOOL_STEPS
+// sonsuz döngüyü önlemek için makul bir üst sınır.
+const MAX_TOOL_STEPS = 5;
+
 export async function askRiona(conversationId: string, userMessage: string): Promise<string> {
   await touchOrCreateConversation(conversationId, userMessage);
   const toolContext = { conversationId };
@@ -114,14 +121,20 @@ export async function askRiona(conversationId: string, userMessage: string): Pro
 
   const toolDefs = availableTools.map((t) => t.definition);
   const forced = detectForcedTool(userMessage);
-  const toolChoice: ToolChoice = forced ? { type: "function", name: forced } : "auto";
+  let toolChoice: ToolChoice = forced ? { type: "function", name: forced } : "auto";
 
-  const firstResponse = await provider.chat(messages, toolDefs, toolChoice);
+  let finalText: string | null = null;
 
-  let finalText: string;
+  for (let step = 0; step < MAX_TOOL_STEPS; step++) {
+    const response = await provider.chat(messages, toolDefs, toolChoice);
+    toolChoice = "auto"; // zorlanan araç seçimi sadece ilk adımda geçerli
 
-  if (firstResponse.tool_calls && firstResponse.tool_calls.length > 0) {
-    const toolCall = firstResponse.tool_calls[0];
+    if (!response.tool_calls || response.tool_calls.length === 0) {
+      finalText = response.content;
+      break;
+    }
+
+    const toolCall = response.tool_calls[0];
     const tool = getToolByName(toolCall.name);
     const args = JSON.parse(toolCall.arguments || "{}");
 
@@ -129,18 +142,18 @@ export async function askRiona(conversationId: string, userMessage: string): Pro
       const description = `${tool.definition.name} çalıştırılmak isteniyor. Parametreler: ${JSON.stringify(args)}`;
       await createPendingAction(conversationId, tool.definition.name, args, description);
       finalText = `Bunu yapmak için onayına ihtiyacım var:\n\n${description}\n\nOnaylıyorsan "onaylıyorum" yaz, istemiyorsan "iptal" yaz.`;
-    } else {
-      const toolResult = tool ? await tool.execute(args, toolContext) : "Araç bulunamadı.";
-      const followUpMessages: ChatMessage[] = [
-        ...messages,
-        firstResponse,
-        { role: "tool", content: toolResult, tool_call_id: toolCall.id },
-      ];
-      const secondResponse = await provider.chat(followUpMessages);
-      finalText = secondResponse.content;
+      break;
     }
-  } else {
-    finalText = firstResponse.content;
+
+    const toolResult = tool ? await tool.execute(args, toolContext) : "Araç bulunamadı.";
+    messages.push(response, { role: "tool", content: toolResult, tool_call_id: toolCall.id });
+  }
+
+  if (finalText === null) {
+    // MAX_TOOL_STEPS adımdan sonra hâlâ araç çağırmak istiyorsa, araçsız bir
+    // çağrıyla düz metin cevaba zorlanıyor.
+    const wrapUp = await provider.chat(messages);
+    finalText = wrapUp.content;
   }
 
   await saveTurn(conversationId, { role: "user", content: userMessage }, { role: "assistant", content: finalText });
