@@ -16,6 +16,7 @@ interface Meeting {
   recording_url: string | null;
   summary_tr: string | null;
   summary_en: string | null;
+  failure_reason?: string | null;
 }
 
 type Tab = "upcoming" | "past";
@@ -58,6 +59,9 @@ export default function MeetingsModule() {
   const [tab, setTab] = useState<Tab>("upcoming");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [summaryLang, setSummaryLang] = useState<Record<string, "tr" | "en">>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dispatchingFor, setDispatchingFor] = useState<Record<string, boolean>>({});
+  const [dispatchErrors, setDispatchErrors] = useState<Record<string, string>>({});
 
   async function loadMeetings() {
     try {
@@ -79,12 +83,44 @@ export default function MeetingsModule() {
 
   useRealtimeRefresh("meetings", loadMeetings);
 
-  const upcoming = meetings.filter((m) => !PAST_STATUSES.has(m.status));
-  const past = meetings.filter((m) => PAST_STATUSES.has(m.status));
+  async function dispatchMeeting(id: string) {
+    setDispatchingFor((prev) => ({ ...prev, [id]: true }));
+    setDispatchErrors((prev) => ({ ...prev, [id]: "" }));
+    try {
+      const res = await fetch(`/api/meetings/${id}/dispatch`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setDispatchErrors((prev) => ({ ...prev, [id]: data.error ?? "Bot gönderilemedi." }));
+        return;
+      }
+      loadMeetings();
+    } catch (e) {
+      console.error("Bot gönderilemedi:", e);
+      setDispatchErrors((prev) => ({ ...prev, [id]: "Bağlantı hatası oluştu." }));
+    } finally {
+      setDispatchingFor((prev) => ({ ...prev, [id]: false }));
+    }
+  }
+
+  const searched = searchQuery.trim()
+    ? meetings.filter((m) => {
+        const q = searchQuery.trim().toLowerCase();
+        return (m.title ?? "").toLowerCase().includes(q) || (speakersText(m.speakers) ?? "").toLowerCase().includes(q);
+      })
+    : meetings;
+  const upcoming = searched.filter((m) => !PAST_STATUSES.has(m.status));
+  const past = searched.filter((m) => PAST_STATUSES.has(m.status));
   const visible = tab === "upcoming" ? upcoming : past;
 
   return (
     <div>
+      <input
+        value={searchQuery}
+        onChange={(ev) => setSearchQuery(ev.target.value)}
+        placeholder="Toplantı başlığı veya konuşmacı ara..."
+        className="mb-3 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink"
+      />
+
       <div className="mb-3 flex gap-1 rounded-lg bg-surface-sunken p-1 text-xs font-medium">
         <button
           onClick={() => setTab("upcoming")}
@@ -154,6 +190,35 @@ export default function MeetingsModule() {
                 PAST_STATUSES.has(m.status) && (
                   <p className="mb-2 text-xs text-ink-muted">Özet henüz oluşturulmadı.</p>
                 )
+              )}
+
+              {m.status === "failed" && (
+                <div className="mb-2 rounded-md border border-red-200 bg-red-50 p-2">
+                  <p className="mb-1 text-xs text-red-800">
+                    Bot gönderilemedi{m.failure_reason ? `: ${m.failure_reason}` : "."}
+                  </p>
+                  <button
+                    onClick={() => dispatchMeeting(m.id)}
+                    disabled={dispatchingFor[m.id]}
+                    className="rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
+                  >
+                    {dispatchingFor[m.id] ? "Deneniyor…" : "Tekrar Dene"}
+                  </button>
+                  {dispatchErrors[m.id] && <p className="mt-1 text-xs text-red-700">{dispatchErrors[m.id]}</p>}
+                </div>
+              )}
+
+              {m.status === "scheduled" && (
+                <div className="mb-2">
+                  <button
+                    onClick={() => dispatchMeeting(m.id)}
+                    disabled={dispatchingFor[m.id]}
+                    className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken disabled:opacity-50"
+                  >
+                    {dispatchingFor[m.id] ? "Gönderiliyor…" : "Botu Şimdi Gönder"}
+                  </button>
+                  {dispatchErrors[m.id] && <p className="mt-1 text-xs text-red-600">{dispatchErrors[m.id]}</p>}
+                </div>
               )}
 
               <div className="flex flex-wrap gap-2">
