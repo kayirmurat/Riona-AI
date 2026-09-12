@@ -21,12 +21,9 @@ export function useRealtimeRefresh(table: string, onChange: () => void, filter?:
     let cleanupChannel: (() => void) | undefined;
     const channelName = filter ? `${table}:${filter.column}:${filter.value}` : table;
 
-    console.log(`[Realtime] useRealtimeRefresh effect çalıştı: table=${table}`);
-
     getBrowserSupabase()
       .then((supabase) => {
         if (cancelled) return;
-        console.log(`[Realtime] ${table} kanalına abone olunuyor.`);
 
         const channel = supabase
           .channel(channelName)
@@ -44,7 +41,9 @@ export function useRealtimeRefresh(table: string, onChange: () => void, filter?:
             }
           )
           .subscribe((status, err) => {
-            console.log(`[Realtime] ${table} abonelik durumu:`, status, err ?? "");
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              console.warn(`[Realtime] ${table} abonelik sorunu:`, status, err ?? "");
+            }
           });
 
         cleanupChannel = () => supabase.removeChannel(channel);
