@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatTranscriptLines } from "../../../lib/meetings/transcriptFormat";
 
 interface Meeting {
   id: string;
@@ -44,14 +45,9 @@ function transcriptText(transcript: unknown): string {
   if (!transcript) return "Transkript henüz yok.";
   if (typeof transcript === "string") return transcript;
   if (Array.isArray(transcript)) {
-    return transcript
-      .map((line: any) => {
-        const speaker = line?.speaker ?? line?.name ?? line?.speaker_name;
-        const text = line?.text ?? line?.message ?? line?.words;
-        if (speaker && text) return `${speaker}: ${text}`;
-        return JSON.stringify(line);
-      })
-      .join("\n");
+    const lines = formatTranscriptLines(transcript);
+    if (lines.length === 0) return "Transkriptte konuşma metni bulunamadı.";
+    return lines.map((line) => `${line.speaker}: ${line.text}`).join("\n");
   }
   return JSON.stringify(transcript, null, 2);
 }

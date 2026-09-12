@@ -1,4 +1,5 @@
 import { getProvider } from "./provider";
+import { formatTranscriptText } from "../meetings/transcriptFormat";
 
 export interface MeetingSummaryResult {
   summary_tr: string;
@@ -10,26 +11,11 @@ const FALLBACK: MeetingSummaryResult = {
   summary_en: "Summary could not be generated.",
 };
 
-// Meeting BaaS'ın transkript alanının tam şekli değişebilir (görülen gerçek
-// canlı örnekte {speaker, ...} ile birlikte boş bir dizi de gelebiliyor) —
-// olası alan adlarını sırayla dener, esnek kalır.
-function flattenTranscript(transcript: unknown): string {
-  if (!Array.isArray(transcript)) return "";
-  return transcript
-    .map((line: any) => {
-      const speaker = line?.speaker ?? line?.speaker_name ?? line?.name ?? "Konuşmacı";
-      const text = line?.text ?? line?.words ?? line?.message ?? "";
-      return text ? `${speaker}: ${text}` : "";
-    })
-    .filter(Boolean)
-    .join("\n");
-}
-
 // Transkript boşsa (bot toplantıya giremedi/konuşma yakalanamadı) AI çağrısı
 // hiç yapılmıyor — hem gereksiz maliyet hem de içeriksiz bir "özet" uydurmak
 // yerine çağıran taraf status'u 'transcribed' seviyesinde bırakabilsin diye.
 export async function summarizeMeeting(transcript: unknown): Promise<MeetingSummaryResult | null> {
-  const text = flattenTranscript(transcript);
+  const text = formatTranscriptText(transcript);
   if (!text.trim()) return null;
 
   try {
