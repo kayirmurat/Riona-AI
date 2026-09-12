@@ -43,7 +43,9 @@ export function useRealtimeRefresh(table: string, onChange: () => void, filter?:
               debounceTimer = setTimeout(() => onChangeRef.current(), 300);
             }
           )
-          .subscribe();
+          .subscribe((status, err) => {
+            console.log(`[Realtime] ${table} abonelik durumu:`, status, err ?? "");
+          });
 
         cleanupChannel = () => supabase.removeChannel(channel);
       })
