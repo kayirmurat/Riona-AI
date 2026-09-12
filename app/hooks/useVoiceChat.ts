@@ -149,6 +149,14 @@ export function useVoiceChat({ lang = "tr-TR", onTranscript, onVoiceMessage }: U
         onTranscriptRef.current(transcript);
         return;
       }
+      // Bu SONUÇ yakalandığı ANDA Riona konuşuyorsa, mikrofon oturumu bir
+      // şekilde TTS çalarken hâlâ açık kalmış demektir (bazı tarayıcılarda
+      // "tek seferlik" mod bile onend'i hemen tetiklemiyor) — bu kesinlikle
+      // kendi sesinin mikrofona sızmasıdır. onend'i beklemeden, yakalandığı
+      // anda atılıyor; aksi halde onend'e kadar geçen sürede TTS bitmiş
+      // olabiliyor ve o zamanki kontrol bu kendi-yankı metnini gerçek
+      // kullanıcı girdisi sanıyordu (canlı testte gözlemlenen asıl hata buydu).
+      if (isSpeechBusy()) return;
       capturedTranscript = transcript;
     };
 
