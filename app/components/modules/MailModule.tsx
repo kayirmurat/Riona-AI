@@ -9,6 +9,7 @@ interface ScannedEmail {
   from_address: string;
   subject: string;
   snippet: string;
+  body_text: string | null;
   needs_reply: boolean;
   draft_subject: string | null;
   draft_body: string | null;
@@ -23,6 +24,7 @@ export default function MailModule() {
   const [scannedEmails, setScannedEmails] = useState<ScannedEmail[]>([]);
   const [edits, setEdits] = useState<Record<string, { subject: string; body: string }>>({});
   const [tab, setTab] = useState<Tab>("pending");
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   async function loadScannedEmails() {
@@ -151,6 +153,22 @@ export default function MailModule() {
               Kimden: {e.from_address} · Hesap: {e.account_label}
             </p>
             <p className="mb-2 text-ink-muted">{e.snippet}</p>
+
+            {e.body_text && (
+              <div className="mb-2">
+                <button
+                  onClick={() => setExpanded((prev) => ({ ...prev, [e.id]: !prev[e.id] }))}
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                >
+                  {expanded[e.id] ? "Tam Maili Gizle" : "Tam Maili Gör"}
+                </button>
+                {expanded[e.id] && (
+                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface-sunken p-2 text-xs text-ink">
+                    {e.body_text}
+                  </pre>
+                )}
+              </div>
+            )}
 
             {e.needs_reply ? (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-2">
