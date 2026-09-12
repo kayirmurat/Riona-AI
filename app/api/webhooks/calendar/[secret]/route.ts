@@ -31,8 +31,15 @@ export async function POST(req: Request, { params }: { params: { secret: string 
     .maybeSingle();
 
   if (!watchRow) {
-    console.error(`[webhooks/calendar] bilinmeyen kanal: ${channelId}`);
-    return NextResponse.json({ success: true, skipped: "kanal tanınmadı" });
+    // Yetim kanal (eski bir kayıttan kalmış, Google'da hâlâ aktif ama bizim
+    // izlediğimiz güncel kanal bu değil) — hangi hesaba ait olduğunu
+    // bilmiyoruz ama Google bize "bir şey değişti" diyor, bunu sessizce
+    // atlamak canlı testte gerçek bir toplantının hiç görünmemesine yol açtı.
+    // Hesap eşleşmesi olmadan da güvenle tam taramaya düşüp dispatch tetikleyebiliriz.
+    console.error(`[webhooks/calendar] bilinmeyen kanal: ${channelId}, tam taramaya düşülüyor`);
+    await scanAndUpsertMeetings();
+    const dispatchResult = await dispatchDueBots();
+    return NextResponse.json({ success: true, handled: "exists_unknown_channel", dispatch: dispatchResult });
   }
 
   const account = { email: watchRow.email, label: watchRow.account_label };
