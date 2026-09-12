@@ -343,3 +343,39 @@ export async function generateDraftForEmail(emailId: string): Promise<{ success:
 
   return { success: true };
 }
+
+// Onay bekleyen bir taslağı, kullanıcı Mail panelinden ayrılmadan doğrudan
+// serbest metin bir talimatla ("İngilizceye çevir", "daha resmi yap" gibi)
+// düzenleyebilsin diye — panel bunu sadece client-side edit state'ine
+// yazıyor, DB'ye kaydetmiyor (mevcut düzenleme akışıyla aynı: onay/gönderim
+// anına kadar hiçbir şey kalıcı değil).
+export async function refineDraft(
+  subject: string,
+  body: string,
+  instruction: string
+): Promise<{ subject: string; body: string }> {
+  const provider = getProvider();
+  const response = await provider.chat(
+    [
+      {
+        role: "system",
+        content: `Kullanıcı, onay bekleyen bir e-posta cevap taslağı üzerinde bir düzenleme istiyor (örn. "İngilizceye çevir", "daha resmi yap", "şu cümleyi ekle"). Mevcut taslağı verilen talimata göre güncelle. SADECE şu JSON formatında yanıt ver, başka hiçbir şey yazma:
+{"subject": string, "body": string}
+Talimatla ilgisi olmayan kısımları olduğu gibi koru.`,
+      },
+      {
+        role: "user",
+        content: `Mevcut konu: ${subject}\nMevcut gövde:\n${body}\n\nTalimat: ${instruction}`,
+      },
+    ],
+    undefined,
+    undefined,
+    { type: "json_object" }
+  );
+
+  const parsed = JSON.parse(response.content || "{}");
+  return {
+    subject: typeof parsed.subject === "string" && parsed.subject.trim() ? parsed.subject.trim() : subject,
+    body: typeof parsed.body === "string" ? parsed.body.trim() : body,
+  };
+}

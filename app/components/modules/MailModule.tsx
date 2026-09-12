@@ -56,6 +56,8 @@ export default function MailModule() {
   const [searching, setSearching] = useState(false);
   const [generatingDraftFor, setGeneratingDraftFor] = useState<Record<string, boolean>>({});
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
+  const [refineInstructions, setRefineInstructions] = useState<Record<string, string>>({});
+  const [refiningFor, setRefiningFor] = useState<Record<string, boolean>>({});
 
   async function loadScannedEmails() {
     try {
@@ -147,12 +149,41 @@ export default function MailModule() {
         setDraftErrors((prev) => ({ ...prev, [id]: data.error ?? "Taslak oluşturulamadı." }));
         return;
       }
+      // Mail artık needs_reply=true + status=pending oldu — kullanıcı hâlâ
+      // "Bilgi Amaçlı" sekmesindeyse taslak orada görünmez, "kayboldu" gibi
+      // hissettirir. Arama modunda değilse doğrudan Onay Bekleyen'e geçiyoruz.
+      if (!searchActive) setTab("pending");
       refreshAfterAction();
     } catch (e) {
       console.error("Taslak oluşturulamadı:", e);
       setDraftErrors((prev) => ({ ...prev, [id]: "Bağlantı hatası oluştu." }));
     } finally {
       setGeneratingDraftFor((prev) => ({ ...prev, [id]: false }));
+    }
+  }
+
+  async function applyRefineInstruction(id: string) {
+    const instruction = refineInstructions[id]?.trim();
+    const current = edits[id];
+    if (!instruction || !current) return;
+    setRefiningFor((prev) => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch("/api/scanned-emails/refine-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: current.subject, body: current.body, instruction }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEdits((prev) => ({ ...prev, [id]: { ...prev[id], subject: data.subject, body: data.body } }));
+        setRefineInstructions((prev) => ({ ...prev, [id]: "" }));
+      } else {
+        console.error("Taslak düzenlenemedi:", data.error);
+      }
+    } catch (e) {
+      console.error("Taslak düzenlenemedi:", e);
+    } finally {
+      setRefiningFor((prev) => ({ ...prev, [id]: false }));
     }
   }
 
@@ -407,6 +438,22 @@ export default function MailModule() {
                   rows={4}
                   className="mb-2 w-full rounded border border-border px-2 py-1 text-sm"
                 />
+                <div className="mb-2 flex gap-2">
+                  <input
+                    value={refineInstructions[e.id] ?? ""}
+                    onChange={(ev) => setRefineInstructions((prev) => ({ ...prev, [e.id]: ev.target.value }))}
+                    onKeyDown={(ev) => ev.key === "Enter" && applyRefineInstruction(e.id)}
+                    placeholder="Riona'ya talimat ver (örn. İngilizceye çevir, daha resmi yap)"
+                    className="flex-1 rounded border border-amber-300 bg-white px-2 py-1 text-xs"
+                  />
+                  <button
+                    onClick={() => applyRefineInstruction(e.id)}
+                    disabled={refiningFor[e.id] || !refineInstructions[e.id]?.trim()}
+                    className="shrink-0 rounded-md border border-amber-400 bg-white px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {refiningFor[e.id] ? "Düzenleniyor…" : "Riona'ya Sor"}
+                  </button>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => e.pending_action_id && respondToPending(e.pending_action_id, "approve_draft", e.id)}
