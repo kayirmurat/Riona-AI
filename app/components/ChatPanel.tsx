@@ -13,6 +13,10 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [correctingIndex, setCorrectingIndex] = useState<number | null>(null);
+  const [correctionText, setCorrectionText] = useState("");
+  const [correctedIndices, setCorrectedIndices] = useState<Set<number>>(new Set());
+  const [submittingCorrection, setSubmittingCorrection] = useState(false);
 
   async function loadHistory(id: string) {
     try {
@@ -38,6 +42,25 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
     column: "conversation_id",
     value: conversationId,
   });
+
+  async function submitCorrection(index: number, wrongText: string) {
+    if (!correctionText.trim() || submittingCorrection) return;
+    setSubmittingCorrection(true);
+    try {
+      await fetch("/api/messages/correct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wrongText, correction: correctionText, conversationId }),
+      });
+      setCorrectedIndices((prev) => new Set(prev).add(index));
+      setCorrectingIndex(null);
+      setCorrectionText("");
+    } catch (e) {
+      console.error("Düzeltme kaydedilemedi:", e);
+    } finally {
+      setSubmittingCorrection(false);
+    }
+  }
 
   async function sendMessage() {
     if (!input.trim() || loading) return;
@@ -70,7 +93,7 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
           <p className="text-sm text-ink-muted">Bir mesaj yazarak Riona AI ile konuşmaya başla.</p>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+          <div key={i} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
             <div
               className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
                 m.role === "user" ? "bg-accent text-white" : "bg-surface-sunken text-ink"
@@ -78,6 +101,51 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
             >
               {m.content}
             </div>
+            {m.role === "assistant" && (
+              <div className="mt-1 max-w-[80%]">
+                {correctedIndices.has(i) ? (
+                  <p className="text-xs text-emerald-600">Not alındı, teşekkürler.</p>
+                ) : correctingIndex === i ? (
+                  <div className="flex flex-col gap-1">
+                    <textarea
+                      value={correctionText}
+                      onChange={(ev) => setCorrectionText(ev.target.value)}
+                      placeholder="Doğrusu neydi?"
+                      rows={2}
+                      className="w-full rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink outline-none focus:border-accent"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => submitCorrection(i, m.content)}
+                        disabled={submittingCorrection || !correctionText.trim()}
+                        className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                      >
+                        Kaydet
+                      </button>
+                      <button
+                        onClick={() => {
+                          setCorrectingIndex(null);
+                          setCorrectionText("");
+                        }}
+                        className="rounded-md border border-border px-2 py-1 text-xs text-ink-muted hover:bg-surface-sunken"
+                      >
+                        Vazgeç
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setCorrectingIndex(i);
+                      setCorrectionText("");
+                    }}
+                    className="text-xs text-ink-muted hover:text-ink hover:underline"
+                  >
+                    Bunu düzelt
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ))}
         {loading && <p className="text-sm text-ink-muted">Riona yazıyor…</p>}
