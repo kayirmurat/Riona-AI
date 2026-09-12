@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ChatMessage } from "../../lib/ai/types";
+import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
 
 interface ChatPanelProps {
   conversationId: string;
@@ -13,17 +14,30 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
 
+  async function loadHistory(id: string) {
+    try {
+      const res = await fetch(`/api/history?conversationId=${id}`);
+      const data = await res.json();
+      if (data.history) setMessages(data.history);
+    } catch (e) {
+      console.error("Geçmiş yüklenemedi:", e);
+    } finally {
+      setHistoryLoaded(true);
+    }
+  }
+
   useEffect(() => {
     setHistoryLoaded(false);
     setMessages([]);
-    fetch(`/api/history?conversationId=${conversationId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.history) setMessages(data.history);
-      })
-      .catch((e) => console.error("Geçmiş yüklenemedi:", e))
-      .finally(() => setHistoryLoaded(true));
+    loadHistory(conversationId);
   }, [conversationId]);
+
+  // Realtime tetiklemesinde mesajlar temizlenmeden sessizce yeniden yüklenir —
+  // aksi halde her yeni mesajda sohbet bir an boşalıp yeniden dolar.
+  useRealtimeRefresh("messages", () => loadHistory(conversationId), {
+    column: "conversation_id",
+    value: conversationId,
+  });
 
   async function sendMessage() {
     if (!input.trim() || loading) return;

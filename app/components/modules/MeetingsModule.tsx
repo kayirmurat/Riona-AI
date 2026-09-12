@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatTranscriptLines } from "../../../lib/meetings/transcriptFormat";
+import { useRealtimeRefresh } from "../../hooks/useRealtimeRefresh";
 
 interface Meeting {
   id: string;
@@ -75,6 +76,8 @@ export default function MeetingsModule() {
   useEffect(() => {
     loadMeetings();
   }, []);
+
+  useRealtimeRefresh("meetings", loadMeetings);
 
   const upcoming = meetings.filter((m) => !PAST_STATUSES.has(m.status));
   const past = meetings.filter((m) => PAST_STATUSES.has(m.status));
