@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import MailModule from "./MailModule";
 import CalendarModule from "./CalendarModule";
 import MeetingsModule from "./MeetingsModule";
+import SettingsModule from "./SettingsModule";
 
 export interface ModuleDefinition {
   id: string;
@@ -15,4 +16,5 @@ export const modules: ModuleDefinition[] = [
   { id: "mail", title: "Mail", component: MailModule },
   { id: "calendar", title: "Takvim", component: CalendarModule },
   { id: "meetings", title: "Toplantılar", component: MeetingsModule },
+  { id: "settings", title: "Ayarlar", component: SettingsModule },
 ];
