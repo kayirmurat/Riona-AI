@@ -50,6 +50,10 @@ export default function MailModule() {
   const [tab, setTab] = useState<Tab>("pending");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchResults, setSearchResults] = useState<ScannedEmail[]>([]);
+  const [searching, setSearching] = useState(false);
 
   async function loadScannedEmails() {
     try {
@@ -84,6 +88,49 @@ export default function MailModule() {
 
   useRealtimeRefresh("scanned_emails", loadScannedEmails);
 
+  async function runSearch(query: string) {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/scanned-emails?q=${encodeURIComponent(trimmed)}`);
+      const data = await res.json();
+      const results: ScannedEmail[] = data.emails ?? [];
+      setSearchResults(results);
+      setSearchActive(true);
+      const newEdits: Record<string, { subject: string; body: string; cc: string; bcc: string }> = {};
+      results.forEach((e) => {
+        if (e.needs_reply && e.status === "pending") {
+          newEdits[e.id] = {
+            subject: e.draft_subject ?? "",
+            body: e.draft_body ?? "",
+            cc: e.cc ?? "",
+            bcc: "",
+          };
+        }
+      });
+      setEdits((prev) => ({ ...newEdits, ...prev }));
+    } catch (e) {
+      console.error("Mail araması başarısız:", e);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function clearSearch() {
+    setSearchActive(false);
+    setSearchQuery("");
+    setSearchResults([]);
+  }
+
+  function refreshAfterAction() {
+    if (searchActive) {
+      runSearch(searchQuery);
+    } else {
+      loadScannedEmails();
+    }
+  }
+
   async function respondToPending(
     pendingActionId: string,
     action: "approve_draft" | "approve_send" | "reject",
@@ -107,7 +154,7 @@ export default function MailModule() {
             : undefined,
       }),
     });
-    loadScannedEmails();
+    refreshAfterAction();
   }
 
   async function handleQuickAction(id: string, action: "archive" | "trash" | "mark_read") {
@@ -116,7 +163,7 @@ export default function MailModule() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, action }),
     });
-    loadScannedEmails();
+    refreshAfterAction();
   }
 
   const activeEmails = scannedEmails.filter((e) => !TERMINAL_STATUSES.has(e.status));
@@ -125,11 +172,53 @@ export default function MailModule() {
   const historyEmails = scannedEmails.filter((e) => TERMINAL_STATUSES.has(e.status));
   const categories = Array.from(new Set(scannedEmails.map((e) => e.category).filter((c): c is string => !!c))).sort();
   const tabEmails = tab === "pending" ? pendingEmails : tab === "info" ? infoEmails : historyEmails;
-  const visibleEmails = selectedCategory ? tabEmails.filter((e) => e.category === selectedCategory) : tabEmails;
+  const filteredTabEmails = selectedCategory ? tabEmails.filter((e) => e.category === selectedCategory) : tabEmails;
+  const visibleEmails = searchActive ? searchResults : filteredTabEmails;
 
   return (
     <div>
-      <div className="mb-3 flex gap-1 rounded-lg bg-surface-sunken p-1 text-xs font-medium">
+      <form
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          runSearch(searchQuery);
+        }}
+        className="mb-3 flex gap-2"
+      >
+        <input
+          value={searchQuery}
+          onChange={(ev) => setSearchQuery(ev.target.value)}
+          placeholder="Tüm mail geçmişinde ara (konu, gönderen, içerik)..."
+          className="flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink"
+        />
+        <button
+          type="submit"
+          disabled={searching || !searchQuery.trim()}
+          className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken disabled:opacity-50"
+        >
+          {searching ? "Aranıyor..." : "Ara"}
+        </button>
+        {searchActive && (
+          <button
+            type="button"
+            onClick={clearSearch}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+          >
+            Temizle
+          </button>
+        )}
+      </form>
+
+      {searchActive && (
+        <p className="mb-3 text-xs text-ink-muted">
+          "{searchQuery}" için {searchResults.length} sonuç (tüm geçmiş, sadece son 48 saat/onay bekleyenlerle sınırlı değil).
+        </p>
+      )}
+
+      <div
+        className={`mb-3 flex gap-1 rounded-lg bg-surface-sunken p-1 text-xs font-medium ${
+          searchActive ? "pointer-events-none opacity-40" : ""
+        }`}
+      >
         <button
           onClick={() => setTab("pending")}
           className={`flex-1 rounded-md px-2 py-1.5 transition ${
@@ -156,7 +245,7 @@ export default function MailModule() {
         </button>
       </div>
 
-      {categories.length > 0 && (
+      {!searchActive && categories.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1">
           <button
             onClick={() => setSelectedCategory(null)}
@@ -186,11 +275,13 @@ export default function MailModule() {
 
       {visibleEmails.length === 0 && (
         <p className="text-sm text-ink-muted">
-          {tab === "pending"
-            ? "Onay bekleyen mail yok."
-            : tab === "info"
-              ? "Bilgi amaçlı taranan mail yok."
-              : "Geçmişte gönderilmiş/reddedilmiş mail yok."}
+          {searchActive
+            ? "Aramanla eşleşen mail bulunamadı."
+            : tab === "pending"
+              ? "Onay bekleyen mail yok."
+              : tab === "info"
+                ? "Bilgi amaçlı taranan mail yok."
+                : "Geçmişte gönderilmiş/reddedilmiş mail yok."}
         </p>
       )}
 
