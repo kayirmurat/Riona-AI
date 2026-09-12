@@ -51,8 +51,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/api/calendar/watch") ||
     pathname.startsWith("/api/meetings/scan") ||
     pathname.startsWith("/api/meetings/dispatch") ||
-    pathname.startsWith("/api/meetings/resummarize") ||
-    pathname.startsWith("/api/debug")
+    pathname.startsWith("/api/meetings/resummarize")
   ) {
     return NextResponse.next();
   }
