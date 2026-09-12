@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRealtimeRefresh } from "../../hooks/useRealtimeRefresh";
 
 interface ScannedEmail {
   id: string;
@@ -49,6 +50,8 @@ export default function MailModule() {
   useEffect(() => {
     loadScannedEmails();
   }, []);
+
+  useRealtimeRefresh("scanned_emails", loadScannedEmails);
 
   async function respondToPending(
     pendingActionId: string,

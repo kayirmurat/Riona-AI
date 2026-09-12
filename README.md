@@ -127,3 +127,48 @@ create table push_subscriptions (
 Bunları yapıp yeniden deploy ettikten sonra, uygulamanın sol menüsünde (sidebar altında) çıkan
 **"🔔 Bildirimleri Etkinleştir"** butonuna tıklayıp tarayıcı izni ver — bundan sonra cevap
 gerektiren yeni bir mail geldiğinde tarayıcı bildirimi alacaksın.
+
+## Arayüzün Anlık Güncellenmesi Kurulumu (Stage 16)
+
+Toplantılar, mailler, sohbet listesi ve mesajlar artık Supabase Realtime ile anlık
+güncelleniyor — sayfayı elle yenilemene gerek kalmıyor. Devreye almak için:
+
+**1) Vercel'e 2 yeni env değişkeni ekle** (Settings → Environment Variables,
+Production ve Preview ikisi için de işaretli):
+
+- `NEXT_PUBLIC_SUPABASE_URL` = mevcut `SUPABASE_URL` ile **birebir aynı** değer
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` = mevcut `SUPABASE_ANON_KEY` ile **birebir aynı** değer
+
+Kaydettikten sonra **yeniden deploy etmen gerekiyor** — Next.js bu değişkenleri
+tarayıcı koduna build sırasında gömüyor, sadece kaydetmek yetmiyor.
+
+**2) Supabase SQL editöründe bir kerelik şunu çalıştır:**
+
+```sql
+alter table meetings        enable row level security;
+alter table scanned_emails  enable row level security;
+alter table conversations   enable row level security;
+alter table messages        enable row level security;
+
+create policy "Authenticated can read meetings"       on meetings       for select to authenticated using (true);
+create policy "Authenticated can read scanned_emails"  on scanned_emails for select to authenticated using (true);
+create policy "Authenticated can read conversations"   on conversations  for select to authenticated using (true);
+create policy "Authenticated can read messages"        on messages       for select to authenticated using (true);
+
+alter publication supabase_realtime add table meetings;
+alter publication supabase_realtime add table scanned_emails;
+alter publication supabase_realtime add table conversations;
+alter publication supabase_realtime add table messages;
+
+alter table messages replica identity full;
+```
+
+Bu SQL, sadece giriş yapmış (authenticated) kullanıcıların bu tabloları okuyabilmesini
+sağlıyor — anon key tarayıcı koduna gömüldüğü için bu koruma olmadan herkes bu
+verileri (mailler, sohbetler, toplantı transkriptleri dahil) doğrudan Supabase'den
+okuyabilirdi. Sunucu tarafındaki mevcut kod (service role key kullanıyor) bu
+korumadan etkilenmiyor, aynı şekilde çalışmaya devam ediyor.
+
+**Not**: Bu policy "herhangi bir authenticated kullanıcı" diyor, kullanıcıya özel bir
+ayrım yapmıyor — tek kullanıcılı bir kurulum olduğu için yeterli, ama Supabase →
+Authentication → Settings'te yeni kullanıcı kaydının kapalı olduğundan emin ol.

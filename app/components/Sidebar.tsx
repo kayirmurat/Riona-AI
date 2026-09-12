@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import NotificationToggle from "./NotificationToggle";
 import { Logo } from "./Logo";
+import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
 
 interface Conversation {
   id: string;
@@ -49,6 +50,8 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose }: Sidebar
   useEffect(() => {
     loadConversations();
   }, []);
+
+  useRealtimeRefresh("conversations", loadConversations);
 
   async function handleCreate() {
     const res = await fetch("/api/conversations", { method: "POST" });
