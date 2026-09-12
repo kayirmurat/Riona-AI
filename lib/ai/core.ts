@@ -40,6 +40,7 @@ const BRIEFING_KEYWORDS = ["hatırlat", "brifing", "briefing", "özet", "bekleye
 const EMAIL_KEYWORDS = ["mail", "e-posta", "eposta", "gmail", "gelen kutu", "inbox"];
 const CALENDAR_KEYWORDS = ["takvim", "calendar", "etkinlik", "toplantı", "randevu"];
 const DRAFT_KEYWORDS = ["taslak", "draft"];
+const REPLY_TO_EXISTING_KEYWORDS = ["cevap", "yanıt", "gelen mail", "gelen e-posta", "geleni"];
 
 function detectForcedTool(userMessage: string): string | null {
   const lower = userMessage.toLowerCase();
@@ -53,7 +54,13 @@ function detectForcedTool(userMessage: string): string | null {
     return "get_meeting_summary";
   }
   if (BRIEFING_KEYWORDS.some((k) => lower.includes(k))) return "get_email_briefing";
-  if (DRAFT_KEYWORDS.some((k) => lower.includes(k))) return "create_email_draft";
+  if (DRAFT_KEYWORDS.some((k) => lower.includes(k))) {
+    // "cevap taslağı hazırla" gibi mesajlar zaten taranmış bir maile cevap
+    // istiyor (generate_reply_draft) — sıfırdan yeni bir mail taslağından
+    // (create_email_draft) ayırt etmek gerekiyor.
+    if (REPLY_TO_EXISTING_KEYWORDS.some((k) => lower.includes(k))) return "generate_reply_draft";
+    return "create_email_draft";
+  }
   if (EMAIL_KEYWORDS.some((k) => lower.includes(k))) return "get_recent_emails";
   if (CALENDAR_KEYWORDS.some((k) => lower.includes(k))) return "get_upcoming_events";
   return null;
