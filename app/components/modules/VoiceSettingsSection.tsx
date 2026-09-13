@@ -1,28 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getVoiceSettings, saveVoiceSettings, applyVoiceSettings, type VoiceSettings } from "../../../lib/voice/voiceSettings";
+import { useRef, useState } from "react";
+import { getVoiceSettings, saveVoiceSettings, OPENAI_VOICES, type VoiceSettings } from "../../../lib/voice/voiceSettings";
+
+const VOICE_LABELS: Record<string, string> = {
+  alloy: "Alloy",
+  echo: "Echo",
+  fable: "Fable",
+  onyx: "Onyx",
+  nova: "Nova",
+  shimmer: "Shimmer",
+};
 
 export default function VoiceSettingsSection() {
-  const [supported, setSupported] = useState(false);
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [settings, setSettings] = useState<VoiceSettings>({ voiceURI: null, rate: 1, pitch: 1 });
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    setSupported(true);
-    setSettings(getVoiceSettings());
-
-    function loadVoices() {
-      setVoices(window.speechSynthesis.getVoices());
-    }
-    loadVoices();
-    // Sesler bazı tarayıcılarda (özellikle ilk yüklemede) asenkron geliyor.
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-    return () => {
-      window.speechSynthesis.onvoiceschanged = null;
-    };
-  }, []);
+  const [settings, setSettings] = useState<VoiceSettings>(() => getVoiceSettings());
+  const [testing, setTesting] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastUrlRef = useRef<string | null>(null);
 
   function update(partial: Partial<VoiceSettings>) {
     const next = { ...settings, ...partial };
@@ -30,92 +25,79 @@ export default function VoiceSettingsSection() {
     saveVoiceSettings(next);
   }
 
-  function testVoice() {
-    const utterance = new SpeechSynthesisUtterance("Merhaba, ben Riona. Bu benim şu anki sesim.");
-    utterance.lang = "tr-TR";
-    applyVoiceSettings(utterance, settings);
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+  async function testVoice() {
+    if (testing) return;
+    setTesting(true);
+    setTestError(null);
+    try {
+      const res = await fetch("/api/voice/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: "Merhaba, ben Riona. Bu benim şu anki sesim.",
+          voice: settings.voice,
+          speed: settings.speed,
+        }),
+      });
+      if (!res.ok) throw new Error("Seslendirme başarısız.");
+      const blob = await res.blob();
+      if (lastUrlRef.current) URL.revokeObjectURL(lastUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      lastUrlRef.current = url;
+      if (!audioRef.current) audioRef.current = new Audio();
+      audioRef.current.src = url;
+      await audioRef.current.play();
+    } catch (e) {
+      setTestError("Ses test edilemedi.");
+    } finally {
+      setTesting(false);
+    }
   }
-
-  if (!supported) return null;
-
-  const lower = (s: string) => s.toLowerCase();
-  const turkishVoices = voices.filter((v) => lower(v.lang).startsWith("tr"));
-  const otherVoices = voices.filter((v) => !lower(v.lang).startsWith("tr"));
 
   return (
     <div>
       <h3 className="mb-2 text-sm font-semibold text-ink">Riona'nın Sesi</h3>
       <p className="mb-2 text-xs text-ink-muted">
-        Sesli sohbette Riona'nın cevaplarını okurken kullanılan ses, konuşma hızı ve ton.
+        Sesli sohbette Riona'nın cevaplarını okurken kullanılan ses ve konuşma hızı.
       </p>
 
       <div className="space-y-3 rounded-lg border border-border bg-surface p-3 text-sm">
         <div>
           <label className="mb-1 block text-xs text-ink-muted">Ses</label>
           <select
-            value={settings.voiceURI ?? ""}
-            onChange={(ev) => update({ voiceURI: ev.target.value || null })}
+            value={settings.voice}
+            onChange={(ev) => update({ voice: ev.target.value as VoiceSettings["voice"] })}
             className="w-full rounded border border-border bg-surface px-2 py-1 text-sm text-ink"
           >
-            <option value="">Tarayıcı varsayılanı</option>
-            {turkishVoices.length > 0 && (
-              <optgroup label="Türkçe">
-                {turkishVoices.map((v) => (
-                  <option key={v.voiceURI} value={v.voiceURI}>
-                    {v.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {otherVoices.length > 0 && (
-              <optgroup label="Diğer">
-                {otherVoices.map((v) => (
-                  <option key={v.voiceURI} value={v.voiceURI}>
-                    {v.name} ({v.lang})
-                  </option>
-                ))}
-              </optgroup>
-            )}
+            {OPENAI_VOICES.map((v) => (
+              <option key={v} value={v}>
+                {VOICE_LABELS[v] ?? v}
+              </option>
+            ))}
           </select>
-          {voices.length === 0 && (
-            <p className="mt-1 text-xs text-ink-muted">Bu tarayıcıda kayıtlı ses bulunamadı, varsayılan kullanılacak.</p>
-          )}
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-ink-muted">Konuşma Hızı: {settings.rate.toFixed(1)}x</label>
+          <label className="mb-1 block text-xs text-ink-muted">Konuşma Hızı: {settings.speed.toFixed(1)}x</label>
           <input
             type="range"
             min={0.5}
             max={2}
             step={0.1}
-            value={settings.rate}
-            onChange={(ev) => update({ rate: parseFloat(ev.target.value) })}
-            className="w-full"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs text-ink-muted">Ton: {settings.pitch.toFixed(1)}</label>
-          <input
-            type="range"
-            min={0}
-            max={2}
-            step={0.1}
-            value={settings.pitch}
-            onChange={(ev) => update({ pitch: parseFloat(ev.target.value) })}
+            value={settings.speed}
+            onChange={(ev) => update({ speed: parseFloat(ev.target.value) })}
             className="w-full"
           />
         </div>
 
         <button
           onClick={testVoice}
-          className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+          disabled={testing}
+          className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken disabled:opacity-50"
         >
-          Test Et
+          {testing ? "Çalınıyor…" : "Test Et"}
         </button>
+        {testError && <p className="text-xs text-red-600">{testError}</p>}
       </div>
     </div>
   );
