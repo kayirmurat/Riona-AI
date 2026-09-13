@@ -43,7 +43,7 @@ export default function HealthStatusSection() {
 
   async function loadStatus() {
     try {
-      const res = await fetch("/api/health/status");
+      const res = await fetch("/api/health/status", { cache: "no-store" });
       setStatus(await res.json());
     } catch (e) {
       console.error("Sistem durumu yüklenemedi:", e);
