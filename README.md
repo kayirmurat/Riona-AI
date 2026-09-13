@@ -120,7 +120,15 @@ create table push_subscriptions (
   endpoint text primary key,
   p256dh text not null,
   auth text not null,
+  notify_mail boolean not null default true,
+  notify_digest boolean not null default true,
+  notify_health boolean not null default true,
   created_at timestamptz not null default now()
+);
+
+create table cron_runs (
+  key text primary key,
+  last_run_on date not null
 );
 ```
 
