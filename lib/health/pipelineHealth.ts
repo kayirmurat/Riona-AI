@@ -4,8 +4,46 @@ import { sendPushToAll } from "../push/sendPush";
 
 interface HealthIssue {
   account: string;
-  type: "gmail_watch" | "calendar_watch";
+  type: "gmail_watch" | "calendar_watch" | "meeting_dispatch";
   detail: string;
+}
+
+// Toplantı botu dispatch cron'u (GitHub Actions, her 10 dk) kendi "catch-up"
+// penceresinden (bkz. lib/meetings/dispatch.ts CATCH_UP_WINDOW_MIN=20) daha
+// uzun süre önce başlamış ama hâlâ "scheduled" kalmış bir toplantı, dispatch
+// cron'unun bir şekilde çalışmadığının/tıkandığının işareti — normalde her
+// toplantı ya "dispatched" ya da "failed" olur, "scheduled" kalmaz.
+const STUCK_MEETING_GRACE_MIN = 30;
+
+async function findStuckMeetings(): Promise<HealthIssue[]> {
+  const cutoff = new Date(Date.now() - STUCK_MEETING_GRACE_MIN * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("meetings")
+    .select("id, title, starts_at")
+    .eq("status", "scheduled")
+    .lt("starts_at", cutoff);
+
+  return (data ?? []).map((m: any) => ({
+    account: m.title ?? m.id,
+    type: "meeting_dispatch" as const,
+    detail: `Toplantı saati geçti ama bot hiç dispatch edilmedi (${m.starts_at}).`,
+  }));
+}
+
+// Bu tablo henüz oluşturulmamışsa (migration çalıştırılmadan önce) sessizce
+// yok sayılır — sonucun kalıcı olarak görünmesi sadece bir ek konfor, kontrolün
+// kendisini (ve push bildirimini) engellememeli.
+async function persistResult(healthy: boolean, issues: HealthIssue[]): Promise<void> {
+  try {
+    await supabase.from("health_check_results").upsert({
+      id: "latest",
+      healthy,
+      issues,
+      checked_at: new Date().toISOString(),
+    });
+  } catch {
+    // yukarıdaki not.
+  }
 }
 
 // Bu oturumda iki kez canlıda yaşanan sorun sınıfı — bir watch/kanal sessizce
@@ -42,6 +80,8 @@ export async function checkPipelineHealth(): Promise<{ healthy: boolean; issues:
     }
   }
 
+  issues.push(...(await findStuckMeetings()));
+
   if (issues.length > 0) {
     const summary = issues.map((i) => `${i.account}/${i.type}: ${i.detail}`).join(" | ");
     await sendPushToAll(
@@ -54,5 +94,7 @@ export async function checkPipelineHealth(): Promise<{ healthy: boolean; issues:
     );
   }
 
-  return { healthy: issues.length === 0, issues };
+  const healthy = issues.length === 0;
+  await persistResult(healthy, issues);
+  return { healthy, issues };
 }
