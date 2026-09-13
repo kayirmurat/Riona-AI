@@ -19,13 +19,26 @@ interface PushPayload {
   url?: string;
 }
 
-// Kayıtlı tüm push subscription'lara bildirim gönderir. Artık geçersiz
-// (410 Gone) olanları veritabanından temizler.
-export async function sendPushToAll(payload: PushPayload): Promise<void> {
+export type NotificationType = "mail" | "digest" | "health";
+
+const COLUMN_FOR_TYPE: Record<NotificationType, string> = {
+  mail: "notify_mail",
+  digest: "notify_digest",
+  health: "notify_health",
+};
+
+// Kayıtlı push subscription'lara bildirim gönderir — `type` verilen
+// bildirim türünü kapatmış olan aboneler filtrelenir. İlgili sütun henüz
+// eklenmemişse (migration çalıştırılmadan önce) filtre uygulanmadan
+// herkese gönderilir — bildirim hiç gitmemesindense yine de gitmesi
+// tercih ediliyor. Artık geçersiz (410 Gone) abonelikler temizlenir.
+export async function sendPushToAll(payload: PushPayload, type: NotificationType): Promise<void> {
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
   ensureConfigured();
 
-  const { data: subscriptions } = await supabase.from("push_subscriptions").select("*");
+  const column = COLUMN_FOR_TYPE[type];
+  const filtered = await supabase.from("push_subscriptions").select("*").eq(column, true);
+  const subscriptions = filtered.error ? (await supabase.from("push_subscriptions").select("*")).data : filtered.data;
   if (!subscriptions || subscriptions.length === 0) return;
 
   const body = JSON.stringify(payload);

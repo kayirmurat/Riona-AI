@@ -1,0 +1,32 @@
+name: DST-safe daily crons
+
+# Vercel Hobby planı cron'ları günde bir defadan sık çalıştıramıyor ve saat
+# dilimi bilmiyor — sabit bir UTC saati ABD kış/yaz saati (EDT/EST) arasında
+# geçişte gerçek yerel saatten 1 saat kayıyordu. Bu üç endpoint artık burada
+# SAATLİK çağrılıyor; her biri kendi içinde (lib/cron/localHour.ts) "şu an
+# New York saatiyle hedef saat mi?" kontrolü yapıp değilse hiçbir şey
+# yapmadan dönüyor — DST geçişinde elle hiçbir ayar gerekmiyor.
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Daily digest
+        run: |
+          curl -sS -f \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://riona-ai-tau.vercel.app/api/cron/daily-digest"
+      - name: Health check
+        run: |
+          curl -sS -f \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://riona-ai-tau.vercel.app/api/cron/health-check"
+      - name: Daily conversation
+        run: |
+          curl -sS -f \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://riona-ai-tau.vercel.app/api/cron/daily-conversation"
