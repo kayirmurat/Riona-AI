@@ -35,14 +35,18 @@ async function findStuckMeetings(): Promise<HealthIssue[]> {
 // kendisini (ve push bildirimini) engellememeli.
 async function persistResult(healthy: boolean, issues: HealthIssue[]): Promise<void> {
   try {
-    await supabase.from("health_check_results").upsert({
+    // Supabase-js sorgu hatalarında İSTİSNA FIRLATMAZ, {error} olarak döner —
+    // bu yüzden gerçek bir yazma hatasının sessizce kaybolmaması için ayrıca
+    // kontrol edilip loglanıyor (catch sadece ağ vb. gerçek istisnalar için).
+    const { error } = await supabase.from("health_check_results").upsert({
       id: "latest",
       healthy,
       issues,
       checked_at: new Date().toISOString(),
     });
-  } catch {
-    // yukarıdaki not.
+    if (error) console.error("[health] sonuç kaydedilemedi:", error.message);
+  } catch (e) {
+    console.error("[health] sonuç kaydedilemedi (istisna):", e);
   }
 }
 
