@@ -40,11 +40,14 @@ export async function buildAndSendDailyDigest(): Promise<{ sent: boolean; stats:
     .map(([cat, count]) => `${cat} (${count})`)
     .join(", ");
 
-  await sendPushToAll({
-    title: "Günlük Mail Özeti",
-    body: `Son 24 saatte ${totalScanned} mail tarandı, ${pendingReplies} onay bekliyor. En çok: ${topCategories}`,
-    url: "/",
-  });
+  await sendPushToAll(
+    {
+      title: "Günlük Mail Özeti",
+      body: `Son 24 saatte ${totalScanned} mail tarandı, ${pendingReplies} onay bekliyor. En çok: ${topCategories}`,
+      url: "/",
+    },
+    "digest"
+  );
 
   return { sent: true, stats };
 }

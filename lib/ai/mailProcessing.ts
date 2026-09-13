@@ -207,11 +207,14 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
 
     // "Önemli" ayrı bir skor değil, needs_reply ile aynı sinyal — kullanıcının
     // gerçekten dikkat etmesi gereken mailler zaten cevap gerektirenler.
-    sendPushToAll({
-      title: "Cevap bekleyen yeni mail",
-      body: `"${subject}" — ${from}`,
-      url: "/",
-    }).catch((err) => console.error("[mailProcessing] push bildirimi gönderilemedi:", err));
+    sendPushToAll(
+      {
+        title: "Cevap bekleyen yeni mail",
+        body: `"${subject}" — ${from}`,
+        url: "/",
+      },
+      "mail"
+    ).catch((err) => console.error("[mailProcessing] push bildirimi gönderilemedi:", err));
   }
 
   if (classification.is_meeting && classification.meeting_title && classification.meeting_start && classification.meeting_end) {

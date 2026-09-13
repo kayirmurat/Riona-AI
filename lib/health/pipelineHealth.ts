@@ -44,11 +44,14 @@ export async function checkPipelineHealth(): Promise<{ healthy: boolean; issues:
 
   if (issues.length > 0) {
     const summary = issues.map((i) => `${i.account}/${i.type}: ${i.detail}`).join(" | ");
-    await sendPushToAll({
-      title: "Mail/Takvim izleme sorunu",
-      body: summary.slice(0, 180),
-      url: "/",
-    });
+    await sendPushToAll(
+      {
+        title: "Mail/Takvim izleme sorunu",
+        body: summary.slice(0, 180),
+        url: "/",
+      },
+      "health"
+    );
   }
 
   return { healthy: issues.length === 0, issues };
