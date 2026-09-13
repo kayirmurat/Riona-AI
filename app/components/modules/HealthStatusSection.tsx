@@ -40,6 +40,8 @@ export default function HealthStatusSection() {
   const [checking, setChecking] = useState(false);
   const [loading, setLoading] = useState(true);
   const [justChecked, setJustChecked] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [fixMessage, setFixMessage] = useState<string | null>(null);
 
   async function loadStatus() {
     try {
@@ -70,6 +72,24 @@ export default function HealthStatusSection() {
       setChecking(false);
     }
   }
+
+  async function fixWatches() {
+    setFixing(true);
+    setFixMessage(null);
+    try {
+      const res = await fetch("/api/health/fix-watches", { method: "POST" });
+      const data = await res.json();
+      const allOk = (data.results ?? []).every((r: any) => r.gmail.ok && r.calendar.ok);
+      setFixMessage(allOk ? "✓ Watch kayıtları yenilendi" : "Bazı hesaplarda yenileme başarısız oldu, ayrıntı için tekrar kontrol et.");
+      await checkNow();
+    } catch (e) {
+      setFixMessage("Yenileme başarısız.");
+    } finally {
+      setFixing(false);
+    }
+  }
+
+  const hasWatchIssue = status?.lastCheck?.issues.some((i) => i.type === "gmail_watch" || i.type === "calendar_watch");
 
   return (
     <div>
@@ -111,6 +131,19 @@ export default function HealthStatusSection() {
           </button>
           {justChecked && <span className="text-xs text-emerald-600">✓ Kontrol tamamlandı</span>}
         </div>
+
+        {hasWatchIssue && (
+          <div className="flex items-center gap-2 border-t border-border pt-2">
+            <button
+              onClick={fixWatches}
+              disabled={fixing}
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken disabled:opacity-50"
+            >
+              {fixing ? "Yenileniyor…" : "Watch Kayıtlarını Yenile"}
+            </button>
+            {fixMessage && <span className="text-xs text-ink-muted">{fixMessage}</span>}
+          </div>
+        )}
 
         {status?.cronRuns && (
           <div className="border-t border-border pt-2">
