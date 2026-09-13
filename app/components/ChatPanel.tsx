@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../../lib/ai/types";
 import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
-import { useVoiceChat } from "../hooks/useVoiceChat";
+import { useServerVoiceChat } from "../hooks/useServerVoiceChat";
 
 interface ChatPanelProps {
   conversationId: string;
@@ -101,7 +101,7 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
     await sendMessageText(text, false);
   }
 
-  const voice = useVoiceChat({
+  const voice = useServerVoiceChat({
     onTranscript: (text) => setInput((prev) => (prev ? `${prev} ${text}` : text)),
     onVoiceMessage: (text) => sendMessageText(text, true),
   });
@@ -231,7 +231,7 @@ export default function ChatPanel({ conversationId }: ChatPanelProps) {
       </div>
       {!voice.supported && (
         <p className="px-3 pb-2 text-xs text-ink-muted">
-          Sesli özellikler bu tarayıcıda desteklenmiyor — Chrome, Edge veya Safari kullan.
+          Sesli özellikler bu tarayıcıda desteklenmiyor — mikrofon erişimi olan güncel bir tarayıcı kullan.
         </p>
       )}
     </div>
