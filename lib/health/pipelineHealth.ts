@@ -44,7 +44,7 @@ async function persistResult(healthy: boolean, issues: HealthIssue[]): Promise<v
       issues,
       checked_at: new Date().toISOString(),
     });
-    if (error) console.error("[health] sonuç kaydedilemedi:", error.message);
+    if (error) console.error("[health] sonuç kaydedilemedi:", error.message, "| SUPABASE_URL:", process.env.SUPABASE_URL);
   } catch (e) {
     console.error("[health] sonuç kaydedilemedi (istisna):", e);
   }
