@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import VoiceSettingsSection from "./VoiceSettingsSection";
+import NotificationSettingsSection from "./NotificationSettingsSection";
 
 interface Account {
   email: string;
@@ -156,6 +157,8 @@ export default function SettingsModule() {
       </div>
 
       <VoiceSettingsSection />
+
+      <NotificationSettingsSection />
     </div>
   );
 }
