@@ -39,6 +39,7 @@ export default function HealthStatusSection() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [checking, setChecking] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [justChecked, setJustChecked] = useState(false);
 
   async function loadStatus() {
     try {
@@ -57,9 +58,12 @@ export default function HealthStatusSection() {
 
   async function checkNow() {
     setChecking(true);
+    setJustChecked(false);
     try {
       await fetch("/api/health/check", { method: "POST" });
       await loadStatus();
+      setJustChecked(true);
+      setTimeout(() => setJustChecked(false), 4000);
     } catch (e) {
       console.error("Kontrol başarısız:", e);
     } finally {
@@ -97,13 +101,16 @@ export default function HealthStatusSection() {
           <p className="text-xs text-ink-muted">Henüz hiç kontrol çalışmadı.</p>
         )}
 
-        <button
-          onClick={checkNow}
-          disabled={checking}
-          className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken disabled:opacity-50"
-        >
-          {checking ? "Kontrol ediliyor…" : "Şimdi Kontrol Et"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={checkNow}
+            disabled={checking}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken disabled:opacity-50"
+          >
+            {checking ? "Kontrol ediliyor…" : "Şimdi Kontrol Et"}
+          </button>
+          {justChecked && <span className="text-xs text-emerald-600">✓ Kontrol tamamlandı</span>}
+        </div>
 
         {status?.cronRuns && (
           <div className="border-t border-border pt-2">

@@ -51,7 +51,15 @@ async function persistResult(healthy: boolean, issues: HealthIssue[]): Promise<v
 // akmayı kesmesi — artık günlük olarak proaktif kontrol ediliyor. Watch/kanal
 // yenileme cron'ları zaten günlük çalışıyor (vercel.json); bu kontrol onların
 // gerçekten işe yaradığını (kayıt var mı, süresi geçmiş mi) doğruluyor.
-export async function checkPipelineHealth(): Promise<{ healthy: boolean; issues: HealthIssue[] }> {
+//
+// `notify: false` — Ayarlar'daki "Şimdi Kontrol Et" gibi kullanıcının zaten
+// ekranda sonucu göreceği manuel çağrılar için: aynı (henüz çözülmemiş)
+// sorun için her tıklamada yeniden push göndermek gereksiz/rahatsız edici
+// olurdu. Otomatik (cron) çağrı varsayılan olarak bildirim gönderir.
+export async function checkPipelineHealth(
+  options: { notify?: boolean } = {}
+): Promise<{ healthy: boolean; issues: HealthIssue[] }> {
+  const { notify = true } = options;
   const accounts = await listGoogleAccounts();
   const issues: HealthIssue[] = [];
   const now = Date.now();
@@ -82,7 +90,7 @@ export async function checkPipelineHealth(): Promise<{ healthy: boolean; issues:
 
   issues.push(...(await findStuckMeetings()));
 
-  if (issues.length > 0) {
+  if (issues.length > 0 && notify) {
     const summary = issues.map((i) => `${i.account}/${i.type}: ${i.detail}`).join(" | ");
     await sendPushToAll(
       {

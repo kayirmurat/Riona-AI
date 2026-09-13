@@ -5,6 +5,6 @@ import { checkPipelineHealth } from "../../../../lib/health/pipelineHealth";
 // zaten koruduğu normal oturum girişli kullanıcı için (Ayarlar'daki "Şimdi
 // Kontrol Et" butonu), sır tabanlı cron erişimi değil.
 export async function POST() {
-  const result = await checkPipelineHealth();
+  const result = await checkPipelineHealth({ notify: false });
   return NextResponse.json(result);
 }
