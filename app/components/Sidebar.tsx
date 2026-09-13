@@ -257,7 +257,7 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose, view, onS
         </div>
 
         <div className="border-t border-border p-3">
-          <NotificationToggle />
+          <NotificationToggle onOpenSettings={() => onSelectView("settings")} />
         </div>
       </aside>
     </>
