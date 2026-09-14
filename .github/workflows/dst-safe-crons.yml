@@ -30,3 +30,8 @@ jobs:
           curl -sS -f \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             "https://riona-ai-tau.vercel.app/api/cron/daily-conversation"
+      - name: Update personalization profile
+        run: |
+          curl -sS -f \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://riona-ai-tau.vercel.app/api/cron/update-personalization"
