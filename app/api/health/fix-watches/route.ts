@@ -25,5 +25,6 @@ export async function POST() {
     results.push({ account: acc.label, gmail, calendar });
   }
 
+  console.log("[fix-watches] sonuçlar:", JSON.stringify(results));
   return NextResponse.json({ results });
 }
