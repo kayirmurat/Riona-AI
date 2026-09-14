@@ -11,9 +11,21 @@ const PLATFORM_PATTERNS: { platform: string; pattern: RegExp }[] = [
   { platform: "teams", pattern: /teams\.microsoft\.com\/[^\s"'<>]+/i },
 ];
 
-interface DetectedMeeting {
+export interface DetectedMeeting {
   url: string;
   platform: string;
+}
+
+// Regex kısmı hem takvim etkinliklerinde hem de düz e-posta metninde aynı
+// şekilde çalışıyor — mailProcessing.ts'te bir mailin gövdesinden gerçek
+// (modelin uydurma/yazım hatası riski taşımayan, birebir kopyalanmış) bir
+// görüşme linki çıkarmak için de kullanılıyor.
+export function findMeetingUrlInText(text: string): DetectedMeeting | null {
+  for (const { platform, pattern } of PLATFORM_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) return { url: match[0], platform };
+  }
+  return null;
 }
 
 export function detectMeetingLink(event: RawCalendarEvent): DetectedMeeting | null {
@@ -28,11 +40,7 @@ export function detectMeetingLink(event: RawCalendarEvent): DetectedMeeting | nu
     ...(event.conferenceData?.entryPoints ?? []).map((e) => e.uri ?? ""),
   ].join("\n");
 
-  for (const { platform, pattern } of PLATFORM_PATTERNS) {
-    const match = haystack.match(pattern);
-    if (match) return { url: match[0], platform };
-  }
-  return null;
+  return findMeetingUrlInText(haystack);
 }
 
 interface Account {

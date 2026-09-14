@@ -3,6 +3,7 @@ import { getProvider } from "./provider";
 import { createPendingAction } from "./approval";
 import { createCalendarNote } from "../integrations/google/calendar";
 import { extractEmailBody, extractAttachments } from "../integrations/google/gmail";
+import { findMeetingUrlInText } from "../meetings/detect";
 import { getValidAccessTokenFor } from "../integrations/google/tokens";
 import { sendPushToAll } from "../push/sendPush";
 
@@ -218,12 +219,21 @@ export async function classifyAndStoreEmail(account: Account, messageId: string,
   }
 
   if (classification.is_meeting && classification.meeting_title && classification.meeting_start && classification.meeting_end) {
+    // Modelin bir URL'i harfiyen doğru kopyalayacağına güvenmek yerine (yazım
+    // hatası/uydurma riski), gerçek görüşme linki mailin ham metninden regex
+    // ile çıkarılıyor — takvim toplantı botunun (lib/meetings/detect.ts) aynı
+    // aracı. Bulunursa takvim notunun açıklamasına eklenir ki bu not bir
+    // takvim taramasında/webhook'unda "gerçek bir toplantı" olarak tanınıp
+    // bota otomatik gönderilebilsin — önceden bu link hiç aktarılmıyordu.
+    const detectedLink = findMeetingUrlInText(`${snippet}\n${bodyText}`);
+    const linkLine = detectedLink ? `\nGörüşme linki: ${detectedLink.url}` : "";
+
     const calendarResult = await createCalendarNote(account.email, {
       title: classification.meeting_title,
       start: classification.meeting_start,
       end: classification.meeting_end,
       location: classification.meeting_location,
-      description: `Kaynak e-posta: "${subject}" (${from})\nMaili aç: https://mail.google.com/mail/u/0/#all/${messageId}`,
+      description: `Kaynak e-posta: "${subject}" (${from})\nMaili aç: https://mail.google.com/mail/u/0/#all/${messageId}${linkLine}`,
     });
     if (!calendarResult.ok) {
       console.error(`[mailProcessing] takvim notu oluşturulamadı: account=${account.label} message=${messageId}`, calendarResult.message);
