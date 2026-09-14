@@ -23,13 +23,17 @@ export async function registerWatch(
   const historyId = String(data.historyId ?? "");
   const expiration = data.expiration ? new Date(Number(data.expiration)).toISOString() : null;
 
-  await supabase.from("gmail_watch_state").upsert({
+  const { error: writeError } = await supabase.from("gmail_watch_state").upsert({
     email,
     account_label: label,
     history_id: historyId,
     watch_expiration: expiration,
     updated_at: new Date().toISOString(),
   });
+
+  if (writeError) {
+    return { ok: false, message: `Google'da watch açıldı ama veritabanına yazılamadı: ${writeError.message}` };
+  }
 
   return { ok: true, message: `Watch kaydedildi (historyId=${historyId}, expiration=${expiration})` };
 }
