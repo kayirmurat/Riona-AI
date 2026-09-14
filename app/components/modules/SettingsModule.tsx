@@ -38,6 +38,10 @@ export default function SettingsModule() {
   const [facts, setFacts] = useState<MemoryFact[]>([]);
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [newAccountLabel, setNewAccountLabel] = useState("");
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [newFactContent, setNewFactContent] = useState("");
+  const [addingFact, setAddingFact] = useState(false);
 
   async function loadAll() {
     try {
@@ -77,6 +81,37 @@ export default function SettingsModule() {
     await fetch(`/api/settings/facts?id=${id}`, { method: "DELETE" });
   }
 
+  async function addNewFact() {
+    if (!newFactContent.trim() || addingFact) return;
+    setAddingFact(true);
+    try {
+      await fetch("/api/settings/facts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newFactContent }),
+      });
+      setNewFactContent("");
+      await loadAll();
+    } finally {
+      setAddingFact(false);
+    }
+  }
+
+  function addNewAccount() {
+    const label = newAccountLabel.trim() || "kişisel";
+    window.location.href = `/api/auth/google?label=${encodeURIComponent(label)}`;
+  }
+
+  async function disconnectAccount(email: string) {
+    setDisconnecting(email);
+    try {
+      await fetch(`/api/settings/accounts?email=${encodeURIComponent(email)}`, { method: "DELETE" });
+      setAccounts((prev) => prev.filter((a) => a.email !== email));
+    } finally {
+      setDisconnecting(null);
+    }
+  }
+
   if (loading) return <p className="text-sm text-ink-muted">Yükleniyor…</p>;
 
   return (
@@ -84,17 +119,40 @@ export default function SettingsModule() {
       <div>
         <h3 className="mb-2 text-sm font-semibold text-ink">Bağlı Google Hesapları</h3>
         {accounts.length === 0 ? (
-          <p className="text-sm text-ink-muted">Bağlı hesap yok.</p>
+          <p className="mb-2 text-sm text-ink-muted">Bağlı hesap yok.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="mb-2 space-y-2">
             {accounts.map((a) => (
-              <div key={a.email} className="rounded-lg border border-border bg-surface p-3 text-sm">
-                <p className="font-medium text-ink">{a.label}</p>
-                <p className="text-xs text-ink-muted">{a.email}</p>
+              <div key={a.email} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface p-3 text-sm">
+                <div>
+                  <p className="font-medium text-ink">{a.label}</p>
+                  <p className="text-xs text-ink-muted">{a.email}</p>
+                </div>
+                <button
+                  onClick={() => disconnectAccount(a.email)}
+                  disabled={disconnecting === a.email}
+                  className="shrink-0 rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink-muted hover:bg-surface-sunken disabled:opacity-50"
+                >
+                  {disconnecting === a.email ? "Kesiliyor…" : "Bağlantıyı Kes"}
+                </button>
               </div>
             ))}
           </div>
         )}
+        <div className="flex gap-2">
+          <input
+            value={newAccountLabel}
+            onChange={(e) => setNewAccountLabel(e.target.value)}
+            placeholder="Etiket (ör. iş, kişisel)"
+            className="flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-accent"
+          />
+          <button
+            onClick={addNewAccount}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+          >
+            + Hesap Ekle
+          </button>
+        </div>
       </div>
 
       <div>
@@ -136,9 +194,9 @@ export default function SettingsModule() {
           Riona'nın "remember_fact" veya sohbetteki "Bunu düzelt" ile kaydettiği, her sohbette hatırladığı bilgiler.
         </p>
         {facts.length === 0 ? (
-          <p className="text-sm text-ink-muted">Henüz hatırlanan bir bilgi yok.</p>
+          <p className="mb-2 text-sm text-ink-muted">Henüz hatırlanan bir bilgi yok.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="mb-2 space-y-2">
             {facts.map((f) => (
               <div key={f.id} className="flex items-start justify-between gap-2 rounded-lg border border-border bg-surface p-3 text-sm">
                 <div>
@@ -155,6 +213,22 @@ export default function SettingsModule() {
             ))}
           </div>
         )}
+        <div className="flex gap-2">
+          <input
+            value={newFactContent}
+            onChange={(e) => setNewFactContent(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addNewFact()}
+            placeholder="Yeni bir bilgi ekle…"
+            className="flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-accent"
+          />
+          <button
+            onClick={addNewFact}
+            disabled={addingFact || !newFactContent.trim()}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken disabled:opacity-50"
+          >
+            Ekle
+          </button>
+        </div>
       </div>
 
       <VoiceSettingsSection />
