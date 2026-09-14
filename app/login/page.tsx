@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Logo } from "../components/Logo";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -31,31 +32,40 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ maxWidth: 360, margin: "80px auto", padding: 16, fontFamily: "sans-serif" }}>
-      <h1 style={{ fontSize: 22, marginBottom: 16 }}>Riona AI — Giriş</h1>
-      <input
-        type="email"
-        placeholder="E-posta"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ width: "100%", padding: 10, marginBottom: 8, borderRadius: 8, border: "1px solid #ccc" }}
-      />
-      <input
-        type="password"
-        placeholder="Şifre"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-        style={{ width: "100%", padding: 10, marginBottom: 8, borderRadius: 8, border: "1px solid #ccc" }}
-      />
-      {error && <p style={{ color: "red", fontSize: 14 }}>{error}</p>}
-      <button
-        onClick={handleLogin}
-        disabled={loading}
-        style={{ width: "100%", padding: 10, borderRadius: 8, border: "none", background: "#0b6", color: "white" }}
-      >
-        {loading ? "Giriş yapılıyor..." : "Giriş yap"}
-      </button>
+    <main className="flex min-h-screen items-center justify-center bg-surface-muted px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8 shadow-sm">
+        <div className="mb-6 flex flex-col items-center gap-2">
+          <Logo size={40} />
+          <h1 className="text-lg font-semibold text-ink">Riona AI</h1>
+          <p className="text-sm text-ink-muted">Devam etmek için giriş yap</p>
+        </div>
+
+        <div className="space-y-3">
+          <input
+            type="email"
+            placeholder="E-posta"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+          />
+          <input
+            type="password"
+            placeholder="Şifre"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+          />
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Giriş yapılıyor…" : "Giriş yap"}
+          </button>
+        </div>
+      </div>
     </main>
   );
 }

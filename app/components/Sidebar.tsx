@@ -259,6 +259,18 @@ export default function Sidebar({ activeId, onSelect, isOpen, onClose, view, onS
         <div className="border-t border-border p-3">
           <NotificationToggle onOpenSettings={() => onSelectView("settings")} />
         </div>
+
+        <div className="border-t border-border p-3">
+          <button
+            onClick={async () => {
+              await fetch("/api/auth/logout", { method: "POST" });
+              window.location.href = "/login";
+            }}
+            className="w-full rounded-lg px-2 py-2 text-left text-sm text-ink-muted hover:bg-surface-sunken"
+          >
+            Çıkış Yap
+          </button>
+        </div>
       </aside>
     </>
   );
