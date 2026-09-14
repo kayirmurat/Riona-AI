@@ -10,6 +10,7 @@ import { searchEmailsTool } from "./tools/searchEmailsTool";
 import { createCalendarEventTool } from "./tools/createCalendarEventTool";
 import { updateCalendarEventTool } from "./tools/updateCalendarEventTool";
 import { deleteCalendarEventTool } from "./tools/deleteCalendarEventTool";
+import { takeMessageTool } from "./tools/takeMessageTool";
 
 export const availableTools: Tool[] = [
   gmailTool,
@@ -23,6 +24,7 @@ export const availableTools: Tool[] = [
   createCalendarEventTool,
   updateCalendarEventTool,
   deleteCalendarEventTool,
+  takeMessageTool,
 ];
 
 export function getToolByName(name: string): Tool | undefined {
