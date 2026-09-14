@@ -95,7 +95,19 @@ kalıyor — bu sadece yeni/değişen toplantılar için ek, anlık bir hızlı 
    (diğer webhook secret'larıyla aynı mantık).
 4. **Vercel'e env değişkenini gir**: Settings → Environment Variables →
    `CALENDAR_WEBHOOK_PATH_SECRET` — Production ve Preview ikisi için de işaretli olsun.
-5. **Watch kaydını başlat**: kod deploy edildikten sonra tarayıcıda
+5. **Supabase'de tabloyu oluştur** (bu adım daha önce dokümante edilmemişti):
+   ```sql
+   create table calendar_watch_state (
+     email text primary key,
+     account_label text,
+     channel_id text,
+     resource_id text,
+     sync_token text,
+     channel_expiration timestamptz,
+     updated_at timestamptz not null default now()
+   );
+   ```
+6. **Watch kaydını başlat**: kod deploy edildikten sonra tarayıcıda
    `https://riona-ai-tau.vercel.app/api/calendar/watch?secret=<CRON_SECRET-degerin>`
    adresini aç — `{"success":true,...}` dönerse kayıt tamamlanmış demektir. Bu kayıt
    kendiliğinden günlük olarak yenilenir (bkz. `vercel.json`), elle tekrar yapmana gerek yok.
