@@ -27,7 +27,11 @@ export async function claimDailyRun(key: string, timeZone: string): Promise<bool
     const { data, error } = await supabase.from("cron_runs").select("last_run_on").eq("key", key).maybeSingle();
     if (error) return true;
     if (data?.last_run_on === today) return false;
-    await supabase.from("cron_runs").upsert({ key, last_run_on: today });
+    // Bu yazmanın hatası daha önce sessizce yutuluyordu — asıl görev (cron'un
+    // kendisi) yine de çalışıyordu ama "çalıştı" kaydı hiç düşmediği için
+    // Ayarlar'daki "son çalışma" listesi hep "hiç çalışmadı" gösteriyordu.
+    const { error: writeError } = await supabase.from("cron_runs").upsert({ key, last_run_on: today });
+    if (writeError) console.error(`[cron] "${key}" için last_run_on yazılamadı:`, writeError.message);
     return true;
   } catch {
     return true;
