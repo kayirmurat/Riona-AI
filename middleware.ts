@@ -51,7 +51,10 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/api/calendar/watch") ||
     pathname.startsWith("/api/meetings/scan") ||
     pathname.startsWith("/api/meetings/dispatch") ||
-    pathname.startsWith("/api/meetings/resummarize")
+    pathname.startsWith("/api/meetings/resummarize") ||
+    // Telefon köprü sunucusu (phone-bridge/) kendi PHONE_BRIDGE_SECRET
+    // bearer token'ıyla doğrulanıyor, cookie oturumu yok (ayrı bir servis).
+    pathname.startsWith("/api/phone/")
   ) {
     return NextResponse.next();
   }
