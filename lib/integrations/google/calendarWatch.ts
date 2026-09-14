@@ -70,7 +70,13 @@ export async function registerCalendarWatch(
   const expiration = data.expiration ? new Date(Number(data.expiration)).toISOString() : null;
   const syncToken = await fetchInitialSyncToken(email);
 
-  await supabase.from("calendar_watch_state").upsert({
+  // Google tarafında kanal başarıyla açıldıktan sonra veritabanına yazma
+  // hatası kontrol edilmiyordu — Google API'si başarılı dönerse fonksiyon
+  // "ok:true" diyordu, ama yazma sessizce başarısız olsa bile bu hiç fark
+  // edilmiyordu (canlı testte gözlemlendi: kanal Google'da gerçekten açıldı
+  // ama satır veritabanına hiç yazılmadı, sağlık kontrolü hâlâ "kayıt yok"
+  // diyordu).
+  const { error: writeError } = await supabase.from("calendar_watch_state").upsert({
     email,
     account_label: label,
     channel_id: channelId,
@@ -79,6 +85,10 @@ export async function registerCalendarWatch(
     channel_expiration: expiration,
     updated_at: new Date().toISOString(),
   });
+
+  if (writeError) {
+    return { ok: false, message: `Google'da kanal açıldı ama veritabanına yazılamadı: ${writeError.message}` };
+  }
 
   return { ok: true, message: `Calendar watch kaydedildi (expiration=${expiration})` };
 }
