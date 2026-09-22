@@ -1,10 +1,10 @@
 import { supabase } from "../db/supabase";
-import { listGoogleAccounts } from "../integrations/google/tokens";
+import { listGoogleAccounts, getValidAccessTokenFor } from "../integrations/google/tokens";
 import { sendPushToAll } from "../push/sendPush";
 
 interface HealthIssue {
   account: string;
-  type: "gmail_watch" | "calendar_watch" | "meeting_dispatch";
+  type: "gmail_watch" | "calendar_watch" | "meeting_dispatch" | "google_token";
   detail: string;
 }
 
@@ -69,6 +69,21 @@ export async function checkPipelineHealth(
   const now = Date.now();
 
   for (const acc of accounts) {
+    // Watch süresi henüz dolmamış olsa bile hesabın Google bağlantısı (refresh
+    // token) kopmuş olabilir — bu durumda watch/kanal kendisi de bir süre
+    // sonra yenilenemeyip sessizce bozulur, ama bu doğrudan kontrol günler
+    // sürecek bir gecikme olmadan hemen fark ettiriyor (canlı testte
+    // gözlemlendi: token kopmuştu, webhook'lar başarısız oluyordu ama watch
+    // kaydı henüz "süresi dolmuş" görünmüyordu).
+    const hasValidToken = await getValidAccessTokenFor(acc.email);
+    if (!hasValidToken) {
+      issues.push({
+        account: acc.label,
+        type: "google_token",
+        detail: "Google hesabı bağlantısı kopmuş — Ayarlar'dan hesabı yeniden bağlaman gerekiyor.",
+      });
+    }
+
     const { data: gmailState } = await supabase
       .from("gmail_watch_state")
       .select("watch_expiration")
