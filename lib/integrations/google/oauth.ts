@@ -2,6 +2,11 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 
 export function getGoogleAuthUrl(label: string): string {
+  // state, Türkçe karakter (ör. "kişisel") içerebiliyordu — teknik olarak
+  // geçerli ama gereksiz bir risk (bazı OAuth aracı/proxy katmanları
+  // state'i saf ASCII bekleyebiliyor). base64url ile kodlanıp callback'te
+  // geri çözülüyor.
+  const encodedLabel = Buffer.from(label, "utf-8").toString("base64url");
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID ?? "",
     redirect_uri: process.env.GOOGLE_REDIRECT_URI ?? "",
@@ -10,7 +15,7 @@ export function getGoogleAuthUrl(label: string): string {
       "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.compose",
     access_type: "offline",
     prompt: "consent",
-    state: label,
+    state: encodedLabel,
   });
   return `${GOOGLE_AUTH_URL}?${params.toString()}`;
 }
@@ -28,6 +33,17 @@ export async function exchangeCodeForTokens(code: string) {
     }),
   });
   const data = await res.json();
+
+  // refreshAccessToken'daki ile aynı düzeltme — Google hata döndürdüğünde
+  // (ör. kod süresi dolmuş/redirect_uri uyuşmazlığı) bu hiç kontrol
+  // edilmiyordu, sessizce undefined token'larla devam edip google_accounts'a
+  // bozuk bir kayıt yazılabiliyordu.
+  if (!res.ok) {
+    throw new Error(
+      `Google kod değişimi başarısız (HTTP ${res.status}): ${data?.error ?? "bilinmeyen"} — ${data?.error_description ?? ""}`
+    );
+  }
+
   return {
     access_token: data.access_token as string,
     refresh_token: data.refresh_token as string,
