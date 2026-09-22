@@ -47,6 +47,18 @@ export async function refreshAccessToken(refreshToken: string) {
     }),
   });
   const data = await res.json();
+
+  // Google bir hata döndürdüğünde (ör. invalid_grant — refresh token iptal
+  // edilmiş/süresi dolmuş) bu kontrol edilmiyordu; fonksiyon data.access_token
+  // undefined olsa bile sessizce "başarılı" gibi devam ediyordu — gerçek sebep
+  // hiçbir yerde görünmüyordu. Artık fırlatıyor, çağıran taraf (tokens.ts)
+  // bunu yakalayıp logluyor.
+  if (!res.ok) {
+    throw new Error(
+      `Google token yenileme başarısız (HTTP ${res.status}): ${data?.error ?? "bilinmeyen"} — ${data?.error_description ?? ""}`
+    );
+  }
+
   return {
     access_token: data.access_token as string,
     expiry_date: Date.now() + (data.expires_in as number) * 1000,

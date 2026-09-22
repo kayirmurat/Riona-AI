@@ -68,7 +68,13 @@ export async function POST(req: Request, { params }: { params: { secret: string 
   const accessToken = await getValidAccessTokenFor(account.email);
   if (!accessToken) {
     console.error(`[webhook/gmail] token alınamadı: ${email}`);
-    return NextResponse.json({ success: false, error: "Token alınamadı." }, { status: 500 });
+    // 500 dönmek Google Pub/Sub'ın aynı bildirimi durmadan yeniden
+    // denemesine yol açıyordu (canlı testte saatte 1800+ istek gözlemlendi)
+    // — token yenilenemediği sürece (kullanıcı hesabı yeniden bağlayana
+    // kadar) yeniden denemenin bir faydası yok, bu yüzden 200 ile "atlandı"
+    // dönülüyor. lib/health/pipelineHealth.ts zaten bu hesabın watch/token
+    // durumunu ayrıca kontrol edip kullanıcıyı uyarıyor.
+    return NextResponse.json({ success: true, skipped: "token alınamadı" });
   }
 
   const storedHistoryId = await getStoredHistoryId(account.email);

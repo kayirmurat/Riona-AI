@@ -66,13 +66,23 @@ export async function getValidAccessTokenFor(identifier: string): Promise<string
     return account.access_token;
   }
 
-  const refreshed = await refreshAccessToken(account.refresh_token);
-  await saveGoogleAccount({
-    email: account.email,
-    label: account.label,
-    access_token: refreshed.access_token,
-    refresh_token: account.refresh_token,
-    expiry_date: refreshed.expiry_date,
-  });
-  return refreshed.access_token;
+  try {
+    const refreshed = await refreshAccessToken(account.refresh_token);
+    await saveGoogleAccount({
+      email: account.email,
+      label: account.label,
+      access_token: refreshed.access_token,
+      refresh_token: account.refresh_token,
+      expiry_date: refreshed.expiry_date,
+    });
+    return refreshed.access_token;
+  } catch (err) {
+    // Önceden bu hata hiç yakalanmıyordu (refreshAccessToken zaten hiçbir
+    // şey fırlatmıyordu) — çağıran taraflar (webhook'lar, araçlar) sadece
+    // "token alınamadı" görüyordu, gerçek sebep (ör. Google'ın invalid_grant
+    // demesi — refresh token iptal edilmiş/süresi dolmuş) hiçbir yerde
+    // görünmüyordu.
+    console.error(`[tokens] Token yenilenemedi: identifier=${identifier}`, err);
+    return null;
+  }
 }
